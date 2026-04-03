@@ -52,10 +52,10 @@ COPY . .
 # -------------------------------
 # 9. Vérifier que deploy.sh existe et le rendre exécutable
 # -------------------------------
-RUN if [ -f ./deploy.sh ]; then chmod +x ./deploy.sh; else echo "deploy.sh manquant"; exit 1; fi
+RUN [ -f ./deploy.sh ] && chmod +x ./deploy.sh
 
 # -------------------------------
-# 10. Installer les dépendances PHP (prod)
+# 10. Installer les dépendances PHP (optimisé pour la prod)
 # -------------------------------
 RUN composer install --no-dev --optimize-autoloader
 
