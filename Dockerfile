@@ -1,11 +1,6 @@
-# -------------------------------
-# 1. Image de base : PHP avec Apache
-# -------------------------------
-FROM php:8.4-apache
+FROM php:8.2-apache
 
-# -------------------------------
-# 2. Installer les dépendances système
-# -------------------------------
+# 1. Installer les dépendances système nécessaires
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
@@ -14,62 +9,37 @@ RUN apt-get update && apt-get install -y \
     unzip \
     git \
     curl \
-    default-mysql-client \
- && rm -rf /var/lib/apt/lists/*
+    default-mysql-client
 
-# -------------------------------
-# 3. Installer les extensions PHP requises par Laravel
-# -------------------------------
+# 2. Installer les extensions PHP requises par Laravel
 RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
-# -------------------------------
-# 4. Activer le module Apache rewrite
-# -------------------------------
+# 3. Activer le module de réécriture Apache (pour les routes Laravel)
 RUN a2enmod rewrite
 
-# -------------------------------
-# 5. Configurer la racine web vers /public
-# -------------------------------
-ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/000-default.conf \
- && sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
+# 4. Configurer la racine d'Apache vers le dossier /public
+ENV APACHE_DOCUMENT_ROOT /var/www/html/public
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/000-default.conf
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
 
-# -------------------------------
-# 6. Installer Composer
-# -------------------------------
+# 5. Installer Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# -------------------------------
-# 7. Définir le dossier de travail
-# -------------------------------
+# 6. Définir le dossier de travail
 WORKDIR /var/www/html
 
-# -------------------------------
-# 8. Copier tous les fichiers du projet
-# -------------------------------
-COPY . .
+# 7. Copier tous les fichiers du projet
+COPY . /var/www/html
 
-# -------------------------------
-# 9. Rendre deploy.sh exécutable (obligatoire, échoue si absent)
-# -------------------------------
-RUN chmod +x ./deploy.sh
-
-# -------------------------------
-# 10. Installer les dépendances PHP (optimisé pour la prod)
-# -------------------------------
+# 8. Installer les dépendances PHP (Optimisé pour la prod)
 RUN composer install --no-dev --optimize-autoloader
 
-# -------------------------------
-# 11. Permissions pour Laravel
-# -------------------------------
-RUN chown -R www-data:www-data storage bootstrap/cache
+# 9. Donner les permissions au dossier storage (CRUCIAL)
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-# -------------------------------
-# 12. Exposer le port 80
-# -------------------------------
+# 10. Exposer le port 80 (standard pour Apache)
 EXPOSE 80
 
-# -------------------------------
-# 13. Définir deploy.sh comme point d'entrée
-# -------------------------------
+# 11. Utiliser ton script deploy.sh comme point d'entrée
+RUN chmod +x deploy.sh
 CMD ["./deploy.sh"]
