@@ -12,6 +12,11 @@ ENV APACHE_DOCUMENT_ROOT /var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/000-default.conf
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
 
+# 🔥 PORT FIX ICI
+ENV PORT=10000
+RUN sed -i "s/80/${PORT}/g" /etc/apache2/ports.conf
+RUN sed -i "s/:80/:${PORT}/g" /etc/apache2/sites-available/000-default.conf
+
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
@@ -20,12 +25,11 @@ COPY . /var/www/html
 
 RUN cp .env.example .env || true
 
-# 🔥 FIX ICI
 RUN composer install --no-dev --optimize-autoloader --no-scripts
 
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-EXPOSE 80
+EXPOSE 10000
 
 RUN chmod +x deploy.sh
 
