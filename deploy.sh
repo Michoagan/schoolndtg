@@ -1,13 +1,12 @@
 #!/bin/bash
-set -e
 
 echo "Lancement des migrations..."
-php artisan migrate --force
+php artisan migrate --force || true
 
 echo "Optimisation Laravel..."
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+php artisan config:cache || true
+php artisan route:cache || true
+php artisan view:cache || true
 
 echo "Démarrage Apache..."
 apache2-foreground
