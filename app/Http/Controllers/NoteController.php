@@ -253,7 +253,7 @@ class NoteController extends Controller
                         $texteWhatsapp .= "Connectez-vous à l'espace parent pour plus de détails.";
 
                         try {
-                            \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                            \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
                                 'phone' => $eleveAlerte->repetiteur_whatsapp,
                                 'message' => $texteWhatsapp
                             ]);

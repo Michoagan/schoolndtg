@@ -167,8 +167,10 @@ class TuteurController extends Controller
     // Déconnexion
     public function logout(Request $request)
     {
-        if ($request->user()) {
-            $request->user()->currentAccessToken()->delete();
+        /** @var \App\Models\Tuteur|null $user */
+        $user = $request->user();
+        if ($user) {
+            $user->currentAccessToken()->delete();
         }
 
         return response()->json([
@@ -293,6 +295,7 @@ class TuteurController extends Controller
             'new_password.regex' => 'Le nouveau mot de passe doit contenir au moins une majuscule, une minuscule, un chiffre et un caractère spécial.',
         ]);
 
+        /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
 
         if (! Hash::check($request->current_password, $parent->password)) {
@@ -314,6 +317,7 @@ class TuteurController extends Controller
     public function dashboard()
     {
         // Récupérer le parent connecté via Sanctum
+        /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
 
         // Récupérer les élèves associés à ce parent
@@ -389,6 +393,7 @@ class TuteurController extends Controller
 
     public function showEleve($id)
     {
+        /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
 
         $eleve = $parent->eleves()->with('classe')->findOrFail($id);
@@ -402,6 +407,7 @@ class TuteurController extends Controller
 
     public function getNotes($id)
     {
+        /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
         $eleve = $parent->eleves()->with('classe')->findOrFail($id);
 
@@ -543,6 +549,7 @@ class TuteurController extends Controller
             'message' => 'required|string|max:1000',
         ]);
 
+        /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
 
         // Enregistrer la plainte ou le message dans la base de données
@@ -558,6 +565,7 @@ class TuteurController extends Controller
 
     public function getPresences($id)
     {
+        /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
         $eleve = $parent->eleves()->findOrFail($id);
 
@@ -616,7 +624,8 @@ class TuteurController extends Controller
     public function emploiDuTemps($id)
     {
         try {
-            $parent = Auth::user();
+            /** @var \App\Models\Tuteur $parent */
+        $parent = Auth::user();
             
             // Validate the student belongs to the parent
             $eleve = $parent->eleves()->findOrFail($id);
@@ -653,7 +662,8 @@ class TuteurController extends Controller
     public function getConvocations($id)
     {
         try {
-            $parent = Auth::user();
+            /** @var \App\Models\Tuteur $parent */
+        $parent = Auth::user();
             $eleve = $parent->eleves()->with('classe')->findOrFail($id);
 
             // Determine if the student is in 1er or 2nd cycle based on class name
@@ -763,7 +773,8 @@ class TuteurController extends Controller
     public function getAlertesScolarite()
     {
         try {
-            $parent = \Illuminate\Support\Facades\Auth::user();
+            /** @var \App\Models\Tuteur $parent */
+        $parent = \Illuminate\Support\Facades\Auth::user();
             $eleves = $parent->eleves()->with('classe')->get();
             $anneeRecherche = \App\Models\Contribution::getAnneeScolaireCourante();
 
@@ -831,7 +842,8 @@ class TuteurController extends Controller
     public function getExercices($id)
     {
         try {
-            $parent = \Illuminate\Support\Facades\Auth::user();
+            /** @var \App\Models\Tuteur $parent */
+        $parent = \Illuminate\Support\Facades\Auth::user();
             $eleve = $parent->eleves()->findOrFail($id);
 
             $cahiers = \App\Models\CahierTexte::with(['matiere', 'professeur', 'elevesNonFaits' => function ($q) use ($eleve) {
@@ -867,7 +879,8 @@ class TuteurController extends Controller
     public function getProfesseurs($id)
     {
         try {
-            $parent = \Illuminate\Support\Facades\Auth::user();
+            /** @var \App\Models\Tuteur $parent */
+        $parent = \Illuminate\Support\Facades\Auth::user();
             // Sécurité : vérifier que l'élève appartient bien au parent
             $eleve = $parent->eleves()->findOrFail($id);
 
@@ -942,6 +955,7 @@ class TuteurController extends Controller
 
     public function getNotifications(Request $request)
     {
+        /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
 
         // Récupérer les notifications, triées par date (les plus récentes d'abord)
@@ -964,6 +978,7 @@ class TuteurController extends Controller
 
     public function markNotificationAsRead(Request $request, $id)
     {
+        /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
 
         $notification = $parent->notifications()->where('id', $id)->first();
@@ -983,6 +998,7 @@ class TuteurController extends Controller
             'repetiteur_whatsapp' => 'nullable|string',
         ]);
 
+        /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
         $eleve = $parent->eleves()->findOrFail($id);
 
@@ -1002,6 +1018,7 @@ class TuteurController extends Controller
             'fcm_token' => 'required|string',
         ]);
 
+        /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
         if ($parent) {
             $parent->fcm_token = $request->fcm_token;

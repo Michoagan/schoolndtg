@@ -69,7 +69,8 @@ class NoteAddedNotification extends Notification
             $matiereNom = $this->note->matiere ? $this->note->matiere->nom : 'une matière';
             $messageText = "Une nouvelle note a été enregistrée en {$matiereNom} pour le trimestre {$this->note->trimestre}.";
 
-            $messageFCM = \Kreait\Firebase\Messaging\CloudMessage::withTarget('token', $notifiable->fcm_token)
+            $messageFCM = \Kreait\Firebase\Messaging\CloudMessage::new()
+                ->withToken($notifiable->fcm_token)
                 ->withNotification(\Kreait\Firebase\Messaging\Notification::create('Nouvelle Note Ajoutée', $messageText))
                 ->withData([
                     'click_action' => 'FLUTTER_NOTIFICATION_CLICK',

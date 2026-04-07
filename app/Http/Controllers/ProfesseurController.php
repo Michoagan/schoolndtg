@@ -237,7 +237,11 @@ class ProfesseurController extends Controller
     {
         // Révoquer le token actuel
         if (Auth::guard('sanctum')->check()) {
-            Auth::guard('sanctum')->user()->currentAccessToken()->delete();
+            /** @var \Laravel\Sanctum\PersonalAccessToken $token */
+            $token = Auth::guard('sanctum')->user()->currentAccessToken();
+            if ($token) {
+                $token->delete();
+            }
         }
 
         return response()->json([
@@ -299,7 +303,7 @@ class ProfesseurController extends Controller
                 $texteWhatsapp .= "Merci de suivre cela de près.";
 
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                    \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
                         'phone' => $eleve->repetiteur_whatsapp,
                         'message' => $texteWhatsapp
                     ]);
@@ -1186,7 +1190,7 @@ class ProfesseurController extends Controller
                     $texteWhatsapp .= "Nous vous prions de vérifier s'il s'agit d'une raison justifiée ou non.";
 
                     try {
-                        \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                        \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
                             'phone' => $eleve->repetiteur_whatsapp,
                             'message' => $texteWhatsapp
                         ]);
@@ -1548,7 +1552,7 @@ class ProfesseurController extends Controller
                     $texteWhatsapp .= "Travail à faire : _{$cahier->travail_a_faire}_";
 
                     try {
-                        \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                        \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
                             'phone' => $eleve->repetiteur_whatsapp,
                             'message' => $texteWhatsapp
                         ]);
@@ -1599,11 +1603,11 @@ class ProfesseurController extends Controller
         $cahier = CahierTexte::where('id', $id)->where('professeur_id', $professeur->id)->firstOrFail();
 
         $cahier->elevesNonFaits()->sync($request->input('eleves_ids', []));
-
+        /** @var \Illuminate\Database\Eloquent\Collection|\App\Models\Eleve[] $eleves */
         $eleves = \App\Models\Eleve::whereIn('id', $request->input('eleves_ids', []))->with('tuteurs')->get();
         foreach ($eleves as $eleve) {
             foreach ($eleve->tuteurs as $tuteur) {
-                $tuteur->notify(new \App\Notifications\ExerciceNonFaitNotification($cahier, $eleve));
+                $tuteur->notify(new \App\Notifications\ExerciceNonFaitNotification($eleve, $cahier));
             }
 
             // --- WHATSAPP REPETITEUR ---
@@ -1614,7 +1618,7 @@ class ProfesseurController extends Controller
                 $texteWhatsapp .= "L'élève n'a pas fait l'exercice demandé : _{$cahier->travail_a_faire}_. Merci de veiller à ce que cela soit fait.";
 
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                    \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
                         'phone' => $eleve->repetiteur_whatsapp,
                         'message' => $texteWhatsapp
                     ]);

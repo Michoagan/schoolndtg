@@ -79,7 +79,8 @@ class AlerteChuteNotesNotification extends Notification implements ShouldQueue
             $title = "Alerte Scolaire 📉";
             $body = "Attention : {$this->eleve->prenom} {$this->raison} en {$this->matiere->nom}. Un suivi est recommandé.";
 
-            $message = CloudMessage::withTarget('token', $notifiable->fcm_token)
+            $message = CloudMessage::new()
+                ->withToken($notifiable->fcm_token)
                 ->withNotification(FirebaseNotification::create($title, $body))
                 ->withData([
                     'type' => 'alerte_notes',
