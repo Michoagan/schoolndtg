@@ -55,7 +55,7 @@ class PerformanceController extends Controller
             $tauxReussite = round(($notesAuDessusMoyenne / $notes->count()) * 100, 2);
         }
 
-        return response()->json([
+        $result = [
             'professeur' => [
                 'id' => $professeur->id,
                 'nom_complet' => $professeur->full_name,
@@ -76,6 +76,31 @@ class PerformanceController extends Controller
                 'taux_reussite' => $tauxReussite,
                 'total_evaluations' => $notes->count()
             ]
+        ];
+
+        return response()->json($result);
+    }
+
+    public function getPerformanceAuditIa($id)
+    {
+        // Réutiliser la logique de statistiques
+        $statsResponse = $this->getPerformanceStats($id);
+        $data = json_decode($statsResponse->getContent(), true);
+
+        $profNom = $data['professeur']['nom_complet'];
+        
+        $statsArray = [
+            'assiduite' => $data['assiduite'],
+            'programme' => $data['programme'],
+            'impact_pedagogique' => $data['impact_pedagogique']
+        ];
+
+        $aiService = app(\App\Services\AiService::class);
+        $auditIa = $aiService->evaluateTeacherPerformance($profNom, $statsArray);
+
+        return response()->json([
+            'success' => true,
+            'audit_ia' => $auditIa
         ]);
     }
 }

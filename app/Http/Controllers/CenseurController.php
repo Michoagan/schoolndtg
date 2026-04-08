@@ -16,12 +16,47 @@ class CenseurController extends Controller
 
     public function dashboard()
     {
+        // Fetch recent unvalidated notes
+        $unvalidatedNotes = \App\Models\Note::with(['matiere', 'classe', 'professeur'])
+            ->where('is_validated', false)
+            ->orderBy('created_at', 'desc')
+            ->take(5)
+            ->get()
+            ->map(function ($note) {
+                return [
+                    'id' => 'n_'.$note->id,
+                    'action' => 'Note En Attente',
+                    'model' => 'Matière: ' . ($note->matiere->nom ?? 'N/A'),
+                    'user_name' => $note->professeur ? $note->professeur->first_name . ' ' . $note->professeur->last_name : 'Professeur',
+                    'user_role' => 'Classe ' . ($note->classe->nom ?? 'N/A'),
+                    'created_at' => $note->created_at
+                ];
+            });
+
+        // Fetch recent text notebooks
+        $recentCahiers = \App\Models\CahierTexte::with(['matiere', 'classe', 'professeur'])
+            ->orderBy('created_at', 'desc')
+            ->take(5)
+            ->get()
+            ->map(function ($c) {
+                return [
+                    'id' => 'c_'.$c->id,
+                    'action' => 'Nouveau Cahier',
+                    'model' => 'Leçon: ' . ($c->notion_cours ?? 'N/A'),
+                    'user_name' => $c->professeur ? $c->professeur->first_name . ' ' . $c->professeur->last_name : 'Professeur',
+                    'user_role' => 'Classe ' . ($c->classe->nom ?? 'N/A'),
+                    'created_at' => $c->created_at
+                ];
+            });
+
+        $recentLogs = collect($unvalidatedNotes)->merge($recentCahiers)->sortByDesc('created_at')->take(6)->values();
+
         $stats = [
             'classes_count' => Classe::count(),
             'professeurs_count' => Professeur::count(),
             'notes_pending_validation' => \App\Models\Note::where('is_validated', false)->count(),
             'eleves_count' => \App\Models\Eleve::count(),
-            'recent_logs' => ModificationLog::orderBy('created_at', 'desc')->take(5)->get()
+            'recent_logs' => $recentLogs
         ];
 
         return response()->json(['success' => true, 'data' => $stats]);
@@ -208,6 +243,50 @@ class CenseurController extends Controller
         $cahiers = $query->orderBy('date_cours', 'desc')->paginate(20);
 
         return response()->json(['success' => true, 'data' => $cahiers]);
+    }
+
+    // === SUIVI PEDAGOGIQUE (TIMELINE) ===
+    public function suiviPedagogique()
+    {
+        // 50 Dernières Notes
+        $notes = \App\Models\Note::with(['eleve', 'matiere', 'professeur', 'classe'])
+            ->orderBy('updated_at', 'desc')
+            ->take(50)
+            ->get()
+            ->map(function ($note) {
+                return [
+                    'id' => 'n_'.$note->id,
+                    'type' => 'note',
+                    'action_label' => 'Saisie de Notes',
+                    'created_at' => $note->updated_at,
+                    'professeur_nom' => $note->professeur ? $note->professeur->first_name . ' ' . $note->professeur->last_name : 'Inconnu',
+                    'matiere_nom' => $note->matiere ? $note->matiere->nom : 'Inconnue',
+                    'classe_nom' => $note->classe ? $note->classe->nom : 'Inconnue',
+                    'details' => "Mise à jour du carnet de notes de l'élève " . ($note->eleve ? $note->eleve->first_name . ' ' . $note->eleve->last_name : 'Inconnu') . " (Trimestre {$note->trimestre})",
+                ];
+            });
+
+        // 50 Derniers Cahiers de Texte
+        $cahiers = \App\Models\CahierTexte::with(['matiere', 'professeur', 'classe'])
+            ->orderBy('created_at', 'desc')
+            ->take(50)
+            ->get()
+            ->map(function ($c) {
+                return [
+                    'id' => 'c_'.$c->id,
+                    'type' => 'cahier',
+                    'action_label' => 'Cahier de Texte',
+                    'created_at' => $c->created_at,
+                    'professeur_nom' => $c->professeur ? $c->professeur->first_name . ' ' . $c->professeur->last_name : 'Inconnu',
+                    'matiere_nom' => $c->matiere ? $c->matiere->nom : 'Inconnue',
+                    'classe_nom' => $c->classe ? $c->classe->nom : 'Inconnue',
+                    'details' => "Notions: " . ($c->notion_cours ?? 'Non renseigné') . " | Travail: " . ($c->travail_a_faire ?: 'Aucun'),
+                ];
+            });
+
+        $timeline = collect($notes)->merge($cahiers)->sortByDesc('created_at')->take(50)->values();
+
+        return response()->json(['success' => true, 'data' => $timeline]);
     }
 
     private function logAction($action, $model, $modelId, $changes)

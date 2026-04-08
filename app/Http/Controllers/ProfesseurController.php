@@ -641,14 +641,19 @@ class ProfesseurController extends Controller
                     ->orderBy('prenom')
                     ->get();
                 
-                // Déduction stricte de la matière (cohérent avec getPresences)
-                $matiere_selectionnee_id = $professeur->classes()
-                    ->where('classe_id', $classe_selectionnee->id)
-                    ->first()
-                    ->pivot
-                    ->matiere_id ?? $professeur->matiere_id;
+                // Déduction de la matière : priorité à la requête
+                $matiere_selectionnee_id = $request->input('matiere_id');
+                
+                // Ignorer la chaîne "null" (flutter stringification) ou vide
+                if (empty($matiere_selectionnee_id) || $matiere_selectionnee_id === 'null') {
+                    $matiere_selectionnee_id = $professeur->classes()
+                        ->where('classe_id', $classe_selectionnee->id)
+                        ->first()
+                        ->pivot
+                        ->matiere_id ?? $professeur->matiere_id;
+                }
                     
-                if ($matiere_selectionnee_id) {
+                if (!empty($matiere_selectionnee_id) && $matiere_selectionnee_id !== 'null') {
                      $matiere_selectionnee = \App\Models\Matiere::find($matiere_selectionnee_id);
                 }
             }
@@ -658,7 +663,7 @@ class ProfesseurController extends Controller
         // 2. Si un élève est sélectionné -> Lancer l'analyse élève
         if ($classe_selectionnee && $matiere_selectionnee) {
             $type_analyse = $request->input('type', 'all');
-            if ($request->has('eleve_id') && $request->eleve_id) {
+            if ($request->has('eleve_id') && $request->eleve_id && $request->eleve_id !== 'null') {
                 // Analyse individuelle
                 $eleve_selectionne = Eleve::find($request->eleve_id);
                 if ($eleve_selectionne) {
@@ -687,15 +692,36 @@ class ProfesseurController extends Controller
             if ($eleve_selectionne) {
                 $query->where('eleve_id', $eleve_selectionne->id);
             }
+            
+            // Appliquer le filtre de type
+            $type_analyse = $request->input('type', 'all');
+            if ($type_analyse !== 'all' && $type_analyse !== 'generale' && $type_analyse !== 'trimestrielle') {
+                if ($type_analyse === 'interro') {
+                    $query->where('type_examen', 'LIKE', '%interro%');
+                } elseif ($type_analyse === 'devoir') {
+                    $query->where('type_examen', 'LIKE', '%devoir%');
+                } else {
+                    $query->where('type_examen', $type_analyse);
+                }
+            }
+
             $notes_examens = $query->with(['eleve', 'matiere'])->get()->map(function($n) {
                 return [
-                    'eleve_nom' => $n->eleve ? $n->eleve->nom_complet : 'Inconnu',
+                    'nom' => $n->eleve ? $n->eleve->nom : 'Inconnu',
+                    'prenom' => $n->eleve ? $n->eleve->prenom : '',
                     'matiere' => $n->matiere ? $n->matiere->nom : 'Inconnue',
                     'type_examen' => $n->type_examen,
                     'valeur' => $n->valeur,
                     'annee_scolaire' => $n->annee_scolaire
                 ];
-            });
+            })->groupBy('type_examen');
+            
+            // L'application Flutter s'attend à trouver 'notes_examens' DANS 'analyse_data'
+            if ($analyse_data !== null) {
+                if (is_array($analyse_data)) {
+                    $analyse_data['notes_examens'] = $notes_examens;
+                }
+            }
         }
 
         return response()->json([
@@ -865,9 +891,9 @@ class ProfesseurController extends Controller
     {
         try {
              // Récupérer les moyennes de classe par trimestre
-            $moyennes_classe = Note::where('classe_id', $classeId)
+            $moyennes_classe = \App\Models\Note::where('classe_id', $classeId)
                 ->where('matiere_id', $matiereId)
-                ->select('trimestre', DB::raw('AVG(moyenne_trimestrielle) as moyenne'))
+                ->select('trimestre', \Illuminate\Support\Facades\DB::raw('AVG(moyenne_trimestrielle) as moyenne'))
                 ->groupBy('trimestre')
                 ->orderBy('trimestre')
                 ->get();
@@ -884,6 +910,12 @@ class ProfesseurController extends Controller
                 $data_values[] = round($stat->moyenne, 2);
             }
 
+            $classeNom = \App\Models\Classe::find($classeId)->nom ?? 'Classe inconnue';
+            $matiereNom = \App\Models\Matiere::find($matiereId)->nom ?? 'Matière inconnue';
+
+            $aiService = app(\App\Services\AiService::class);
+            $aiConseilText = $aiService->analyzeClassGrades($data_values, $matiereNom, $classeNom);
+
             return [
                 'labels' => $labels,
                 'datasets' => [
@@ -895,17 +927,17 @@ class ProfesseurController extends Controller
                 ],
                 'conseils' => [
                     [
-                        'type' => 'Vue d\'ensemble',
+                        'type' => "Audit Pédagogique (IA Gemini)",
                         'recommandations' => [
-                            'Ceci est une vue globale de la classe.',
-                            'Sélectionnez un élève pour voir ses performances détaillées et obtenir des conseils personnalisés.'
+                            $aiConseilText,
+                            'Sélectionnez un élève spécifique pour voir ses performances détaillées et obtenir des conseils individuels.'
                         ]
                     ]
                 ]
             ];
 
         } catch (\Exception $e) {
-            Log::error('Erreur analyse notes classe: '.$e->getMessage());
+            \Illuminate\Support\Facades\Log::error('Erreur analyse notes classe: '.$e->getMessage());
             return null;
         }
     }
@@ -1535,22 +1567,35 @@ class ProfesseurController extends Controller
 
         $cahier->load(['classe', 'matiere']);
 
-        if (!empty($cahier->travail_a_faire)) {
-            $tuteurs = collect();
-            $eleves = \App\Models\Eleve::where('classe_id', $cahier->classe_id)->with('tuteurs')->get();
-            foreach ($eleves as $eleve) {
+        $tuteurs = collect();
+        $eleves = \App\Models\Eleve::where('classe_id', $cahier->classe_id)->with('tuteurs')->get();
+        
+        foreach ($eleves as $eleve) {
+            // Push tuteurs only if homework was given (to send the system notification)
+            if (!empty($cahier->travail_a_faire)) {
                 foreach ($eleve->tuteurs as $tuteur) {
                     $tuteurs->push($tuteur);
                 }
+            }
 
-                // --- WHATSAPP REPETITEUR ---
-                if (!empty($eleve->repetiteur_whatsapp)) {
-                    $texteWhatsapp = "📚 *Nouveau Devoir à faire*\n\n";
-                    $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
-                    $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n";
-                    $texteWhatsapp .= "Pour le : *" . \Carbon\Carbon::parse($cahier->date_cours)->format('d/m/Y') . "*\n\n";
-                    $texteWhatsapp .= "Travail à faire : _{$cahier->travail_a_faire}_";
+            // --- WHATSAPP REPETITEUR ---
+            if (!empty($eleve->repetiteur_whatsapp)) {
+                $hasDevoir = !empty($cahier->travail_a_faire);
+                $texteWhatsapp = $hasDevoir ? "📚 *Résumé du Cours et Devoir*\n\n" : "🏫 *Résumé du Cours*\n\n";
+                $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+                $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n";
+                $texteWhatsapp .= "Date : *" . \Carbon\Carbon::parse($cahier->date_cours)->format('d/m/Y') . "*\n\n";
+                $texteWhatsapp .= "Notion abordée : _{$cahier->notion_cours}_\n";
+                
+                if (!empty($cahier->contenu_cours)) {
+                    $texteWhatsapp .= "Contenu : *{$cahier->contenu_cours}*\n";
+                }
+                
+                if ($hasDevoir) {
+                    $texteWhatsapp .= "\nTravail à faire : _{$cahier->travail_a_faire}_";
+                }
 
+<<<<<<< HEAD
                     try {
                         \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
                             'phone' => $eleve->repetiteur_whatsapp,
@@ -1559,8 +1604,20 @@ class ProfesseurController extends Controller
                     } catch (\Exception $reqEx) {
                         \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp : ' . $reqEx->getMessage());
                     }
+=======
+                try {
+                    \Illuminate\Support\Facades\Http::timeout(3)->post('http://localhost:3000/send', [
+                        'phone' => $eleve->repetiteur_whatsapp,
+                        'message' => $texteWhatsapp
+                    ]);
+                } catch (\Exception $reqEx) {
+                    \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp : ' . $reqEx->getMessage());
+>>>>>>> 86ba345f0bb0bd355b6e2eebc5f3be32c46379ee
                 }
             }
+        }
+        
+        if (!empty($cahier->travail_a_faire) && $tuteurs->isNotEmpty()) {
             $tuteurs = $tuteurs->unique('id');
             \Illuminate\Support\Facades\Notification::send($tuteurs, new \App\Notifications\NouvelExerciceNotification($cahier));
         }

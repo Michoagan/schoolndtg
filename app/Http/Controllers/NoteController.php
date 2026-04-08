@@ -183,7 +183,16 @@ class NoteController extends Controller
                     })->get();
                     
                     foreach ($tuteurs as $tuteur) {
-                        $tuteur->notify(new \App\Notifications\NoteAddedNotification($note));
+                        $tuteur->notify(new \App\Notifications\NoteAddedNotification($note, 'parent'));
+                    }
+
+                    // Notifier le Professeur Principal de la classe
+                    $profPrincipalId = \App\Models\Classe::find($request->classe_id)?->professeur_principal_id;
+                    if ($profPrincipalId) {
+                        $profToAlert = \App\Models\Professeur::find($profPrincipalId);
+                        if ($profToAlert) {
+                            $profToAlert->notify(new \App\Notifications\NoteAddedNotification($note, 'professeur'));
+                        }
                     }
 
                     // --- ALGORITHME D'ALERTE CHUTE DE NOTES ---

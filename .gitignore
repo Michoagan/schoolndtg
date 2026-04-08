@@ -26,3 +26,6 @@ Thumbs.db
 # WhatsApp Bot Session Cache
 whatsapp_bot/.wwebjs_auth/
 whatsapp_bot/node_modules/
+
+# Secrets and Credentials
+firebase_credentials.json

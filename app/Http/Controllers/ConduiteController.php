@@ -127,4 +127,43 @@ class ConduiteController extends Controller
             'message' => "$savedCount notes de conduite enregistrées avec succès."
         ]);
     }
+
+    /**
+     * Génère une appréciation de discipline automatique avec Gemini IA
+     */
+    public function genererAppreciationIa(Request $request, Classe $classe)
+    {
+        $professeur = Auth::user();
+
+        if (!$professeur instanceof Professeur) {
+            return response()->json(['success' => false, 'message' => 'Non autorisé.'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'eleve_id' => 'required|exists:eleves,id',
+            'motifs' => 'required|array',
+            'motifs.*' => 'string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur de validation.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $eleve = \App\Models\Eleve::findOrFail($request->eleve_id);
+        
+        $aiService = app(\App\Services\AiService::class);
+        $appreciation = $aiService->generateDisciplineAppreciation(
+            "{$eleve->nom} {$eleve->prenom}", 
+            $request->motifs
+        );
+
+        return response()->json([
+            'success' => true,
+            'appreciation' => $appreciation
+        ]);
+    }
 }

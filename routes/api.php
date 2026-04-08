@@ -190,6 +190,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/dashboard', [AdminDirectionController::class, 'dashboard']);
         Route::get('/pending-accounts', [AdminDirectionController::class, 'pendingAccounts']);
         Route::get('/all-accounts', [AdminDirectionController::class, 'allAccounts']);
+        Route::get('/logs', [AdminDirectionController::class, 'systemLogs']); // Added Global Audit Log
         Route::post('/users', [AdminDirectionController::class, 'store']); // Create User
         Route::post('/account/{id}/approve', [AdminDirectionController::class, 'approveAccount']);
         Route::post('/account/{id}/reject', [AdminDirectionController::class, 'rejectAccount']);
@@ -250,9 +251,11 @@ Route::middleware('auth:sanctum')->group(function () {
             // Conduites
             Route::get('/classes/{classe}/conduites', [ConduiteController::class, 'index']);
             Route::post('/classes/{classe}/conduites', [ConduiteController::class, 'store']);
+            Route::post('/classes/{classe}/conduites/ia-assistant', [ConduiteController::class, 'genererAppreciationIa']);
 
-            // Performance
+            // Performance & IA
             Route::get('/{id}/performance', [\App\Http\Controllers\Api\PerformanceController::class, 'getPerformanceStats']);
+            Route::get('/{id}/audit-ia', [\App\Http\Controllers\Api\PerformanceController::class, 'getPerformanceAuditIa']);
         });
     });
 
@@ -283,6 +286,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('censeur')->middleware('role:censeur,directeur')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\CenseurController::class, 'dashboard']);
         Route::get('/logs', [\App\Http\Controllers\CenseurController::class, 'getLogs']);
+        Route::get('/suivi', [\App\Http\Controllers\CenseurController::class, 'suiviPedagogique']);
 
         // Timetable & Programmation
         Route::get('/emplois-du-temps/{classe_id}', [\App\Http\Controllers\CenseurController::class, 'getEmploiDuTemps']);

@@ -13,7 +13,11 @@ class AiService
     public function __construct()
     {
         $this->apiKey = env('GEMINI_API_KEY');
+<<<<<<< HEAD
         $this->baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+=======
+        $this->baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+>>>>>>> 86ba345f0bb0bd355b6e2eebc5f3be32c46379ee
     }
 
     /**
@@ -113,7 +117,11 @@ N'utilise pas de salutation, pas de guillemets, vas droit au but.";
     private function callGemini(string $prompt): string
     {
         try {
+<<<<<<< HEAD
             $response = Http::withoutVerifying()->withHeaders([
+=======
+            $response = Http::withHeaders([
+>>>>>>> 86ba345f0bb0bd355b6e2eebc5f3be32c46379ee
                 'Content-Type' => 'application/json',
             ])->post("{$this->baseUrl}?key={$this->apiKey}", [
                 'contents' => [
