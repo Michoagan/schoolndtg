@@ -9,6 +9,8 @@ use App\Models\Matiere;
 use App\Models\Note;
 use App\Models\Paiement;
 use App\Models\Professeur;
+use App\Models\Setting;
+use App\Models\HistoriqueEleve;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PDF;
@@ -266,9 +268,15 @@ class DirecteurController extends Controller
     /**
      * Dashboard du directeur
      */
-    public function dashboard()
+    public function dashboard(Request $request)
     {
-        $totalEleves = Eleve::count();
+        $anneeScolaire = $request->query('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire());
+        $toutesAnnees = \App\Models\HistoriqueEleve::distinct()->pluck('annee_scolaire')->toArray();
+        if (!in_array(\App\Models\Setting::getCurrentAnneeScolaire(), $toutesAnnees)) {
+            $toutesAnnees[] = \App\Models\Setting::getCurrentAnneeScolaire();
+        }
+
+        $totalEleves = Eleve::where('statut', 'actif')->count();
         $totalClasses = Classe::where('is_active', true)->count();
         $totalProfesseurs = Professeur::where('is_active', true)->count();
 
@@ -284,6 +292,33 @@ class DirecteurController extends Controller
         $labels = Classe::where('is_active', true)->pluck('nom');
         $elevesParClasse = Classe::withCount('eleves')->where('is_active', true)->pluck('eleves_count');
 
+        // Statistiques de prise de décision par salle (classe)
+        $classesStats = Classe::withCount('eleves')->where('is_active', true)->get();
+        $decisionStats = [];
+
+        foreach($classesStats as $classe) {
+            $notes = \App\Models\Note::where('classe_id', $classe->id)
+                ->where('annee_scolaire', $anneeScolaire)
+                ->whereNotNull('moyenne_trimestrielle')
+                ->get();
+            $moyenne = $notes->avg('moyenne_trimestrielle');
+            $passCount = $notes->where('moyenne_trimestrielle', '>=', 10)->count();
+            $passRate = $notes->count() > 0 ? round(($passCount / $notes->count()) * 100, 1) : 0;
+
+            $decisionStats[] = [
+                'id' => $classe->id,
+                'nom' => $classe->nom,
+                'effectif' => $classe->eleves_count,
+                'moyenne_generale' => $moyenne ? round($moyenne, 2) : 0,
+                'taux_reussite' => $passRate,
+                'total_notes' => $notes->count()
+            ];
+        }
+
+        usort($decisionStats, function($a, $b) {
+            return $b['taux_reussite'] <=> $a['taux_reussite'];
+        });
+
         // Période d'analyse
         $debutMois = \Carbon\Carbon::now()->startOfMonth();
         $finMois = \Carbon\Carbon::now()->endOfMonth();
@@ -291,6 +326,7 @@ class DirecteurController extends Controller
         // --- 1. BILAN FINANCIER ---
         // Entrées
         $totalScolarite = Paiement::where('statut', 'success')
+            ->where('annee_scolaire', $anneeScolaire)
             ->whereBetween('date_paiement', [$debutMois, $finMois])
             ->sum('montant');
         $totalVentes = \App\Models\Vente::whereBetween('date_vente', [$debutMois, $finMois])
@@ -351,6 +387,8 @@ class DirecteurController extends Controller
 
         return response()->json([
             'success' => true,
+            'annee_scolaire_active' => $anneeScolaire,
+            'annees_disponibles' => array_values(array_unique($toutesAnnees)),
             'data' => [
                 'statistiques' => [
                     'totalEleves' => $totalEleves,
@@ -362,6 +400,7 @@ class DirecteurController extends Controller
                     'elevesParClasse' => $elevesParClasse,
                     'derniersEleves' => $derniersEleves,
                     'derniersProfesseurs' => $derniersProfesseurs,
+                    'decision_stats' => $decisionStats,
                 ],
                 'financier' => [
                     'entrees' => [
@@ -701,5 +740,91 @@ class DirecteurController extends Controller
             'success' => true,
             'cahier' => $cahier,
         ]);
+    }
+
+    public function cloturerAnneeScolaire(Request $request)
+    {
+        $request->validate([
+            'nouvelle_annee' => 'required|string|max:20',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $anneeCourante = Setting::getCurrentAnneeScolaire();
+
+            // 1. Récupérer tous les élèves actifs (statut = 'actif')
+            $eleves = Eleve::where('statut', 'actif')->get();
+
+            $nbPromus = 0;
+            $nbRedoublants = 0;
+
+            foreach ($eleves as $eleve) {
+                // 2. Calculer la moyenne annuelle à partir des notes de l'année courante
+                // Note: since annee_scolaire is newly added and defaults to '2025-2026', we filter by it.
+                $notes = Note::where('eleve_id', $eleve->id)
+                    ->where('annee_scolaire', $anneeCourante)
+                    ->whereNotNull('moyenne_trimestrielle')
+                    ->get();
+                
+                // Average of the trimestres. A student typically has notes in 3 trimestres.
+                // To get the true annual average, we can average the trimester averages.
+                // Alternatively, we group by matiere and find the average per matiere, but 
+                // the prompt says: "(Trimestre 1 + Trimestre 2 + Trimestre 3) / 3".
+                // In DB, notes are stored per matiere and trimestre.
+                // So average of all `moyenne_trimestrielle` for the student is mathematically the same if weighted equally.
+                $moyenneAnnuelle = $notes->avg('moyenne_trimestrielle');
+                
+                $decision = 'Redouble';
+                if ($moyenneAnnuelle !== null && $moyenneAnnuelle >= 10) {
+                    $decision = 'Admis';
+                    $nbPromus++;
+                } else {
+                    $nbRedoublants++;
+                }
+
+                // 3. Sauvegarder dans l'historique
+                HistoriqueEleve::create([
+                    'eleve_id' => $eleve->id,
+                    'classe_id' => $eleve->classe_id,
+                    'annee_scolaire' => $anneeCourante,
+                    'moyenne_annuelle' => $moyenneAnnuelle,
+                    'decision' => $decision,
+                    'commentaires' => "Clôture automatique",
+                ]);
+
+                // 4. Mettre à jour le statut de l'élève
+                if ($decision === 'Admis') {
+                    $eleve->update([
+                        'statut' => 'en_attente',
+                        // We keep classe_id to know where they came from until assigned
+                    ]);
+                }
+            }
+
+            // 5. Passer à la nouvelle année scolaire
+            Setting::setCurrentAnneeScolaire($request->nouvelle_annee);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => "L'année scolaire a été clôturée avec succès.",
+                'stats' => [
+                    'eleves_traites' => $eleves->count(),
+                    'promus' => $nbPromus,
+                    'redoublants' => $nbRedoublants,
+                    'ancienne_annee' => $anneeCourante,
+                    'nouvelle_annee' => $request->nouvelle_annee
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la clôture : ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

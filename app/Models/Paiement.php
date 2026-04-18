@@ -27,7 +27,8 @@ class Paiement extends Model
         'details_paiement',
         'date_paiement',
         'auteur_id',
-        'observation'
+        'observation',
+        'annee_scolaire'
     ];
 
     /**
@@ -201,6 +202,9 @@ class Paiement extends Model
         static::creating(function ($paiement) {
             if (empty($paiement->reference)) {
                 $paiement->reference = 'PYR-' . date('Y') . '-' . strtoupper(uniqid());
+            }
+            if (empty($paiement->annee_scolaire)) {
+                $paiement->annee_scolaire = \App\Models\Setting::getCurrentAnneeScolaire();
             }
         });
     }

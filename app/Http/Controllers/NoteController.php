@@ -16,24 +16,30 @@ class NoteController extends Controller
 {
     public function notes(Request $request)
     {
-        $professeur = Auth::user();
+        $user = Auth::user();
+        $isProfesseur = $user instanceof \App\Models\Professeur;
+        $isDirection = $user instanceof \App\Models\Direction;
 
-        // Vérifier que c'est bien un professeur
-        if (! $professeur instanceof \App\Models\Professeur) {
+        // Vérifier que c'est bien un professeur ou une direction
+        if (! $isProfesseur && ! $isDirection) {
             return response()->json(['error' => 'Non autorisé'], 403);
         }
 
-        // Charger les classes avec leurs matières enseignées par ce professeur
-        $professeur->load(['classes' => function ($query) use ($professeur) {
-            $query->with(['matieres' => function ($q) use ($professeur) {
-                $q->wherePivot('professeur_id', $professeur->id)
-                    ->orderBy('pivot_ordre_affichage');
-            }])->withCount('eleves');
-        }]);
+        // Charger les classes avec leurs matières enseignées par ce professeur si c'est un prof
+        if ($isProfesseur) {
+            $user->load(['classes' => function ($query) use ($user) {
+                $query->with(['matieres' => function ($q) use ($user) {
+                    $q->wherePivot('professeur_id', $user->id)
+                        ->orderBy('pivot_ordre_affichage');
+                }])->withCount('eleves');
+            }]);
+        }
 
         $matiere = null;
         $classe_selectionnee = null;
         $eleves = collect();
+        $notes_existantes = collect();
+        
         // Si une classe est sélectionnée
         if ($request->has('classe_id')) {
             $classe_selectionnee = Classe::find($request->classe_id);
@@ -63,7 +69,7 @@ class NoteController extends Controller
 
         return response()->json([
             'success' => true,
-            'professeur' => $professeur,
+            'professeur' => $user,
             'classe_selectionnee' => $classe_selectionnee,
             'matiere' => $matiere,
             'eleves' => $eleves,
@@ -183,16 +189,7 @@ class NoteController extends Controller
                     })->get();
                     
                     foreach ($tuteurs as $tuteur) {
-                        $tuteur->notify(new \App\Notifications\NoteAddedNotification($note, 'parent'));
-                    }
-
-                    // Notifier le Professeur Principal de la classe
-                    $profPrincipalId = \App\Models\Classe::find($request->classe_id)?->professeur_principal_id;
-                    if ($profPrincipalId) {
-                        $profToAlert = \App\Models\Professeur::find($profPrincipalId);
-                        if ($profToAlert) {
-                            $profToAlert->notify(new \App\Notifications\NoteAddedNotification($note, 'professeur'));
-                        }
+                        $tuteur->notify(new \App\Notifications\NoteAddedNotification($note));
                     }
 
                     // --- ALGORITHME D'ALERTE CHUTE DE NOTES ---

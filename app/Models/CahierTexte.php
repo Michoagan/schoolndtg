@@ -18,7 +18,8 @@ class CahierTexte extends Model
         'objectifs',
         'contenu_cours',
         'travail_a_faire',
-        'observations'
+        'observations',
+        'annee_scolaire'
     ];
 
     protected $casts = [
@@ -50,6 +51,17 @@ class CahierTexte extends Model
     public function elevesNonFaits()
     {
         return $this->belongsToMany(Eleve::class, 'exercice_non_faits', 'cahier_texte_id', 'eleve_id');
+    }
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($cahier) {
+            if (empty($cahier->annee_scolaire)) {
+                $cahier->annee_scolaire = \App\Models\Setting::getCurrentAnneeScolaire();
+            }
+        });
     }
 }
 

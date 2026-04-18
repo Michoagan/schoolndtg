@@ -79,26 +79,15 @@ class AlerteChuteNotesNotification extends Notification implements ShouldQueue
             $title = "Alerte Scolaire 📉";
             $body = "Attention : {$this->eleve->prenom} {$this->raison} en {$this->matiere->nom}. Un suivi est recommandé.";
 
-<<<<<<< HEAD
             $message = CloudMessage::new()
                 ->withToken($notifiable->fcm_token)
                 ->withNotification(FirebaseNotification::create($title, $body))
                 ->withData([
-=======
-            $message = \Kreait\Firebase\Messaging\CloudMessage::fromArray([
-                'token' => $notifiable->fcm_token,
-                'notification' => [
-                    'title' => $title,
-                    'body' => $body,
-                ],
-                'data' => [
->>>>>>> 86ba345f0bb0bd355b6e2eebc5f3be32c46379ee
                     'type' => 'alerte_notes',
                     'eleve_id' => (string) $this->eleve->id,
                     'matiere_id' => (string) $this->matiere->id,
                     'click_action' => 'FLUTTER_NOTIFICATION_CLICK'
-                ]
-            ]);
+                ]);
 
             $messaging->send($message);
             \Log::info("FCM AlerteChuteNotes envoyé à l'utilisateur ID {$notifiable->id} avec succès.");

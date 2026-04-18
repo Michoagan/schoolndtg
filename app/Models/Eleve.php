@@ -26,9 +26,9 @@ class Eleve extends Authenticatable
         'nom_parent',
         'telephone_parent',
         'repetiteur_whatsapp',
-        'repetiteurs',
         'photo',
         'classe_id',
+        'statut',
         'password',
     ];
 
@@ -43,7 +43,6 @@ class Eleve extends Authenticatable
 
     protected $casts = [
         'date_naissance' => 'date',
-        'repetiteurs' => 'array',
     ];
 
     /**
@@ -170,5 +169,10 @@ class Eleve extends Authenticatable
     public function notesExamens()
     {
         return $this->hasMany(NoteExamen::class);
+    }
+
+    public function historiques()
+    {
+        return $this->hasMany(HistoriqueEleve::class);
     }
 }

@@ -25,7 +25,8 @@ class Note extends Model
         'eleve_id',
         'classe_id',
         'professeur_id',
-        'matiere_id'
+        'matiere_id',
+        'annee_scolaire'
     ];
 
     protected $casts = [
@@ -123,6 +124,11 @@ protected static function boot()
         
         // Générer le commentaire automatiquement
         $note->commentaire = $note->getCommentaireAttribute(null);
+
+        // Imposer l'année scolaire active si non spécifiée
+        if (empty($note->annee_scolaire)) {
+            $note->annee_scolaire = \App\Models\Setting::getCurrentAnneeScolaire();
+        }
     });
 }
 

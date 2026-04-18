@@ -40,6 +40,11 @@ class SettingsController extends Controller
         DB::transaction(function () use ($data) {
             foreach ($data as $key => $value) {
                 if ($value !== null) {
+                    // Convertir les booléens en chaînes "1" ou "0" pour éviter de stocker des chaînes vides
+                    if (is_bool($value)) {
+                        $value = $value ? '1' : '0';
+                    }
+                    
                     Setting::updateOrCreate(
                         ['key' => $key],
                         ['value' => $value]

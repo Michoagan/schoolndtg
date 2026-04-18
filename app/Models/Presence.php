@@ -9,7 +9,7 @@ class Presence extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['eleve_id', 'classe_id', 'date', 'present', 'professeur_id', 'cours_id'];
+    protected $fillable = ['eleve_id', 'classe_id', 'date', 'present', 'professeur_id', 'cours_id', 'annee_scolaire'];
 
     public function eleve()
     {
@@ -24,5 +24,16 @@ class Presence extends Model
     public function professeur()
     {
         return $this->belongsTo(Professeur::class);
+    }
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($presence) {
+            if (empty($presence->annee_scolaire)) {
+                $presence->annee_scolaire = \App\Models\Setting::getCurrentAnneeScolaire();
+            }
+        });
     }
 }

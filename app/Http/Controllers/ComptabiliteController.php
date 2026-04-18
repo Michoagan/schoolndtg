@@ -25,12 +25,21 @@ class ComptabiliteController extends Controller
         // Filtre par date (Mois en cours par défaut)
         $dateStart = $request->input('start_date', now()->startOfMonth()->toDateString());
         $dateEnd = $request->input('end_date', now()->endOfMonth()->toDateString());
+        
+        $anneeScolaire = $request->input('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire());
+        $toutesAnnees = \App\Models\HistoriqueEleve::distinct()->pluck('annee_scolaire')->toArray();
+        if (!in_array(\App\Models\Setting::getCurrentAnneeScolaire(), $toutesAnnees)) {
+            $toutesAnnees[] = \App\Models\Setting::getCurrentAnneeScolaire();
+        }
 
         // --- 1. BILAN FINANCIER (Trésorerie) ---
         
         // Entrées
         $totalScolarite = Paiement::where('statut', 'success')
             ->whereBetween('date_paiement', [$dateStart, $dateEnd])
+            ->when($request->has('annee_scolaire'), function($q) use ($anneeScolaire) {
+                return $q->where('annee_scolaire', $anneeScolaire);
+            })
             ->sum('montant');
 
         $totalVentes = Vente::whereBetween('date_vente', [$dateStart, $dateEnd])
@@ -76,6 +85,8 @@ class ComptabiliteController extends Controller
             ->count();
 
         return response()->json([
+            'annee_scolaire_active' => $anneeScolaire,
+            'annees_disponibles' => array_values(array_unique($toutesAnnees)),
             'period' => [
                 'start' => $dateStart,
                 'end' => $dateEnd
@@ -117,6 +128,7 @@ class ComptabiliteController extends Controller
     public function indexPaiements()
     {
         $paiements = Paiement::with(['eleve.classe', 'contribution'])
+            ->where('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire())
             ->latest('date_paiement')
             ->get();
             

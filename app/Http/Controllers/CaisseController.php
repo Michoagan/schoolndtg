@@ -23,10 +23,19 @@ class CaisseController extends Controller
     public function dashboard(Request $request)
     {
         $date = $request->input('date', now()->toDateString());
+        
+        $anneeScolaire = $request->input('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire());
+        $toutesAnnees = \App\Models\HistoriqueEleve::distinct()->pluck('annee_scolaire')->toArray();
+        if (!in_array(\App\Models\Setting::getCurrentAnneeScolaire(), $toutesAnnees)) {
+            $toutesAnnees[] = \App\Models\Setting::getCurrentAnneeScolaire();
+        }
 
         // Contributions (Paiements scolarité validés du jour)
         $totalScolarite = Paiement::where('statut', 'success')
             ->whereDate('date_paiement', $date)
+            ->when($request->has('annee_scolaire'), function($q) use ($anneeScolaire) {
+                return $q->where('annee_scolaire', $anneeScolaire);
+            })
             ->sum('montant');
 
         // Ventes (Autres recettes du jour)
@@ -36,6 +45,8 @@ class CaisseController extends Controller
         $totalEntrees = $totalScolarite + $totalVentes;
 
         return response()->json([
+            'annee_scolaire_active' => $anneeScolaire,
+            'annees_disponibles' => array_values(array_unique($toutesAnnees)),
             'date' => $date,
             'entrees' => [
                 'scolarite' => $totalScolarite,
@@ -46,11 +57,12 @@ class CaisseController extends Controller
     }
 
     /**
-     * Liste de tous les paiements (Scolarité) pour la Caisse.
+     * Liste de tous les paiements (Scolarité) pour la Caisse (Année en cours).
      */
     public function indexPaiements()
     {
         $paiements = Paiement::with(['eleve.classe', 'contribution'])
+            ->where('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire())
             ->latest('date_paiement')
             ->get();
             

@@ -29,4 +29,15 @@ class NoteExamen extends Model
     {
         return $this->belongsTo(Classe::class);
     }
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saving(function ($examen) {
+            if (empty($examen->annee_scolaire)) {
+                $examen->annee_scolaire = \App\Models\Setting::getCurrentAnneeScolaire();
+            }
+        });
+    }
 }

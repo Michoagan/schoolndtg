@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Eleve;
 use App\Models\Tuteur;
+use App\Models\HistoriqueEleve;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -511,19 +512,12 @@ class TuteurController extends Controller
                 })->values();
             });
 
-        $aiService = app(\App\Services\AiService::class);
-        $conseilIa = $aiService->analyzeStudentGrades(
-            $progression[0] != 0 ? $progression[0] : 0, 
-            $performancesMatieres
-        );
-
         return response()->json([
             'success' => true,
             'eleve' => $eleve,
             'moyenne_generale' => $progression[0] != 0 ? $progression[0] : 0, // Exemple: T1
             'progression' => $progression,
             'performances_matieres' => $performancesMatieres,
-            'conseil_ia' => $conseilIa,
             'notes_par_trimestre' => $notesParTrimestre,
             'notes_examens' => $notesExamens,
             'recent_notes' => $notes->take(10)->map(function($note) {
@@ -1002,22 +996,19 @@ class TuteurController extends Controller
     public function updateRepetiteur(Request $request, $id)
     {
         $request->validate([
-            'repetiteurs' => 'nullable|array',
-            'repetiteurs.*.whatsapp' => 'required|string',
-            'repetiteurs.*.matieres' => 'nullable|array',
-            'repetiteurs.*.matieres.*' => 'integer|exists:matieres,id',
+            'repetiteur_whatsapp' => 'nullable|string',
         ]);
 
         /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
         $eleve = $parent->eleves()->findOrFail($id);
 
-        $eleve->repetiteurs = $request->repetiteurs;
+        $eleve->repetiteur_whatsapp = $request->repetiteur_whatsapp;
         $eleve->save();
 
         return response()->json([
             'success' => true,
-            'message' => 'Les informations des répétiteurs ont été mises à jour avec succès.',
+            'message' => 'Numéro du répétiteur mis à jour avec succès.',
             'eleve' => $eleve
         ]);
     }
@@ -1041,5 +1032,49 @@ class TuteurController extends Controller
         }
 
         return response()->json(['success' => false], 401);
+    }
+
+    public function getArchives(Request $request)
+    {
+        /** @var \App\Models\Tuteur $parent */
+        $parent = Auth::user();
+        if (!$parent) {
+            return response()->json(['success' => false], 401);
+        }
+
+        // Get all children of this parent
+        $eleves = $parent->eleves()->get();
+        $elevesIds = $eleves->pluck('id')->toArray();
+
+        // Get history for these children
+        $historiques = HistoriqueEleve::with(['eleve', 'classe'])
+            ->whereIn('eleve_id', $elevesIds)
+            ->orderBy('annee_scolaire', 'desc')
+            ->get();
+
+        // Group by annee_scolaire then by eleve_id or just return flat list mapped nicely
+        $archives = $historiques->map(function ($hist) {
+            return [
+                'annee_scolaire' => $hist->annee_scolaire,
+                'eleve_nom' => $hist->eleve ? $hist->eleve->nom . ' ' . $hist->eleve->prenom : 'Inconnu',
+                'eleve_id' => $hist->eleve_id,
+                'classe' => $hist->classe ? $hist->classe->nom : 'Inconnue',
+                'moyenne_annuelle' => $hist->moyenne_annuelle,
+                'decision' => $hist->decision,
+            ];
+        });
+
+        // Structure it grouped by year for easier display on frontend
+        $groupedArchives = $archives->groupBy('annee_scolaire')->map(function ($items, $year) {
+            return [
+                'annee_scolaire' => $year,
+                'enfants' => $items->values()
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'archives' => $groupedArchives
+        ]);
     }
 }

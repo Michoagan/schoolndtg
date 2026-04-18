@@ -184,20 +184,11 @@ class Contribution extends Model
     }
 
     /**
-     * Obtenir l'année scolaire courante.
+     * Obtenir l'année scolaire courante depuis les paramètres globaux.
      */
     public static function getAnneeScolaireCourante(): string
     {
-        $annee = date('Y');
-        $mois = date('n');
-        
-        // Si on est après août, l'année scolaire commence cette année
-        if ($mois >= 9) {
-            return $annee . '-' . ($annee + 1);
-        }
-        
-        // Sinon, l'année scolaire a commencé l'année précédente
-        return ($annee - 1) . '-' . $annee;
+        return \App\Models\Setting::getCurrentAnneeScolaire();
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Eleve;
 use App\Models\Classe;
+use App\Models\HistoriqueEleve;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -44,6 +45,7 @@ class EleveController extends Controller
         ->when($dateNaissance, function($query, $dateNaissance) {
             $query->whereDate('date_naissance', $dateNaissance);
         })
+        ->where('statut', 'actif')
         ->orderBy('nom')->orderBy('prenom');
     }])
     ->withCount(['eleves' => function($query) use ($search, $classeId, $sexe, $dateNaissance) {
@@ -66,7 +68,8 @@ class EleveController extends Controller
         })
         ->when($dateNaissance, function($query, $dateNaissance) {
             $query->whereDate('date_naissance', $dateNaissance);
-        });
+        })
+        ->where('statut', 'actif');
     }])
     ->orderBy('niveau')
     ->orderBy('nom')
@@ -85,6 +88,50 @@ class EleveController extends Controller
         'search' => $search
     ]);
 }
+
+    /**
+     * Obtenir les élèves en attente d'affectation
+     */
+    public function getElevesEnAttente()
+    {
+        $eleves = Eleve::with('classe')
+            ->where('statut', 'en_attente')
+            ->orderBy('nom')
+            ->orderBy('prenom')
+            ->get();
+            
+        return response()->json([
+            'success' => true,
+            'eleves' => $eleves
+        ]);
+    }
+
+    /**
+     * Affecter une ou plusieurs classes
+     */
+    public function affecterClasses(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'eleve_ids' => 'required|array',
+            'eleve_ids.*' => 'exists:eleves,id',
+            'classe_id' => 'required|exists:classes,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        Eleve::whereIn('id', $request->eleve_ids)->update([
+            'classe_id' => $request->classe_id,
+            'statut' => 'actif'
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Élèves affectés avec succès'
+        ]);
+    }
+
     /**
      * Afficher le formulaire de création
      */
@@ -475,6 +522,34 @@ public function edit(Eleve $eleve)
         ]);
     }
 
+    public function getArchives(Request $request)
+    {
+        $eleve = $request->user();
+        if (!$eleve) {
+            return response()->json(['error' => 'Non autorisé'], 401);
+        }
+
+        // Récupérer l'historique scolaire de l'élève
+        $historiques = HistoriqueEleve::with('classe')
+            ->where('eleve_id', $eleve->id)
+            ->orderBy('annee_scolaire', 'desc')
+            ->get();
+
+        $archives = $historiques->map(function ($hist) {
+            return [
+                'annee_scolaire' => $hist->annee_scolaire,
+                'classe' => $hist->classe ? $hist->classe->nom : 'Inconnue',
+                'moyenne_annuelle' => $hist->moyenne_annuelle,
+                'decision' => $hist->decision,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'archives' => $archives
+        ]);
+    }
+
     public function getExercices(Request $request)
     {
         $eleve = $request->user();
@@ -491,5 +566,78 @@ public function edit(Eleve $eleve)
             ->get();
 
         return response()->json($exercices);
+    }
+
+    public function getContacts(Request $request)
+    {
+        $eleve = $request->user();
+        if (!$eleve) {
+            return response()->json(['error' => 'Non autorisé'], 401);
+        }
+
+        $classe_id = $eleve->classe_id;
+
+        // Fetch professors for the student's class
+        $professeursData = DB::table('classe_matiere')
+            ->where('classe_id', $classe_id)
+            ->join('professeurs', 'classe_matiere.professeur_id', '=', 'professeurs.id')
+            ->join('matieres', 'classe_matiere.matiere_id', '=', 'matieres.id')
+            ->select(
+                'professeurs.id',
+                'professeurs.last_name',
+                'professeurs.first_name',
+                'professeurs.email',
+                'professeurs.phone',
+                'matieres.nom as matiere_nom'
+            )
+            ->get();
+
+        $professeursList = [];
+        foreach ($professeursData as $data) {
+            $profId = $data->id;
+            if (!isset($professeursList[$profId])) {
+                $professeursList[$profId] = [
+                    'id' => $profId,
+                    'nom' => $data->last_name,
+                    'prenom' => $data->first_name,
+                    'email' => $data->email,
+                    'telephone' => $data->phone, // telephone or phone depending on migration
+                    'role' => 'Professeur',
+                    'matieres' => []
+                ];
+            }
+            if (!in_array($data->matiere_nom, $professeursList[$profId]['matieres'])) {
+                $professeursList[$profId]['matieres'][] = $data->matiere_nom;
+            }
+        }
+
+        // Direction Contacts (Static or fetched from users table, here we mock standard contacts)
+        $direction = [
+            [
+                'id' => 'dir_1',
+                'nom' => 'Secrétariat',
+                'prenom' => 'Scolarité',
+                'email' => 'secretariat@notredame.edu',
+                'telephone' => '+123 456 789 000',
+                'role' => 'Secrétariat',
+                'matieres' => ['Administration']
+            ],
+            [
+                'id' => 'dir_2',
+                'nom' => 'Direction',
+                'prenom' => 'Générale',
+                'email' => 'direction@notredame.edu',
+                'telephone' => '+123 456 789 001',
+                'role' => 'Direction',
+                'matieres' => ['Administration']
+            ]
+        ];
+
+        $contacts = array_merge($direction, array_values($professeursList));
+
+        return response()->json([
+            'success' => true,
+            'contacts' => $contacts
+        ]);
     }
 }

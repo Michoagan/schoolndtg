@@ -14,22 +14,29 @@ class PerformanceController extends Controller
     /**
      * Obtenir les statistiques de performance d'un professeur spécifique
      */
-    public function getPerformanceStats($id)
+    public function getPerformanceStats(Request $request, $id)
     {
         $professeur = Professeur::findOrFail($id);
+        $anneeActive = $request->query('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire());
+
+        $toutesAnnees = \App\Models\HistoriqueEleve::distinct()->pluck('annee_scolaire')->toArray();
+        if (!in_array($anneeActive, $toutesAnnees)) {
+            $toutesAnnees[] = $anneeActive;
+        }
+        sort($toutesAnnees);
 
         // 1. Assiduité et Ponctualité (Basé sur les présences)
         // Note: Nous comptabilisons dans la table 'presences' où 'professeur_id' n'est pas nul
         // S'il n'y a pas de professeur_id sur Presence, on pourrait le lier par Classe ou Cours.
         // Adaptons selon ce qui est dans le modèle Presence.
-        $totalHeuresPrevu = Presence::where('professeur_id', $id)->count();
-        $heuresAssurees = Presence::where('professeur_id', $id)->where('present', true)->count();
+        $totalHeuresPrevu = Presence::where('professeur_id', $id)->where('annee_scolaire', $anneeActive)->count();
+        $heuresAssurees = Presence::where('professeur_id', $id)->where('annee_scolaire', $anneeActive)->where('present', true)->count();
         $tauxAssiduite = $totalHeuresPrevu > 0 ? round(($heuresAssurees / $totalHeuresPrevu) * 100, 2) : 100;
 
         // 2. Exécution du Programme (Basé sur Cahier de Texte)
         // On somme les durées de cours déclarées
-        $heuresEffectueesReelles = CahierTexte::where('professeur_id', $id)->sum('duree_cours');
-        $totalCahiersRemplis = CahierTexte::where('professeur_id', $id)->count();
+        $heuresEffectueesReelles = CahierTexte::where('professeur_id', $id)->where('annee_scolaire', $anneeActive)->sum('duree_cours');
+        $totalCahiersRemplis = CahierTexte::where('professeur_id', $id)->where('annee_scolaire', $anneeActive)->count();
 
         // Objectif fictif de 40 heures pour calculer un pourcentage moyen d'avancement,
         // (A adapter dynamiquement si le prof a un quota d'heures)
@@ -38,7 +45,7 @@ class PerformanceController extends Controller
 
         // 3. Impact Pédagogique (Basé sur les Notes)
         // Récupérer les notes attribuées par ce professeur
-        $notes = Note::where('professeur_id', $id)->get();
+        $notes = Note::where('professeur_id', $id)->where('annee_scolaire', $anneeActive)->get();
         
         $moyenneGlobale = 0;
         $tauxReussite = 0;
@@ -55,7 +62,9 @@ class PerformanceController extends Controller
             $tauxReussite = round(($notesAuDessusMoyenne / $notes->count()) * 100, 2);
         }
 
-        $result = [
+        return response()->json([
+            'annee_scolaire_active' => $anneeActive,
+            'annees_disponibles' => $toutesAnnees,
             'professeur' => [
                 'id' => $professeur->id,
                 'nom_complet' => $professeur->full_name,
@@ -76,31 +85,6 @@ class PerformanceController extends Controller
                 'taux_reussite' => $tauxReussite,
                 'total_evaluations' => $notes->count()
             ]
-        ];
-
-        return response()->json($result);
-    }
-
-    public function getPerformanceAuditIa($id)
-    {
-        // Réutiliser la logique de statistiques
-        $statsResponse = $this->getPerformanceStats($id);
-        $data = json_decode($statsResponse->getContent(), true);
-
-        $profNom = $data['professeur']['nom_complet'];
-        
-        $statsArray = [
-            'assiduite' => $data['assiduite'],
-            'programme' => $data['programme'],
-            'impact_pedagogique' => $data['impact_pedagogique']
-        ];
-
-        $aiService = app(\App\Services\AiService::class);
-        $auditIa = $aiService->evaluateTeacherPerformance($profNom, $statsArray);
-
-        return response()->json([
-            'success' => true,
-            'audit_ia' => $auditIa
         ]);
     }
 }

@@ -14,49 +14,60 @@ class CenseurController extends Controller
 {
     // === DASHBOARD & LOGS ===
 
-    public function dashboard()
+    public function dashboard(Request $request)
     {
-        // Fetch recent unvalidated notes
-        $unvalidatedNotes = \App\Models\Note::with(['matiere', 'classe', 'professeur'])
-            ->where('is_validated', false)
-            ->orderBy('created_at', 'desc')
-            ->take(5)
-            ->get()
-            ->map(function ($note) {
-                return [
-                    'id' => 'n_'.$note->id,
-                    'action' => 'Note En Attente',
-                    'model' => 'Matière: ' . ($note->matiere->nom ?? 'N/A'),
-                    'user_name' => $note->professeur ? $note->professeur->first_name . ' ' . $note->professeur->last_name : 'Professeur',
-                    'user_role' => 'Classe ' . ($note->classe->nom ?? 'N/A'),
-                    'created_at' => $note->created_at
-                ];
-            });
+        $anneeActive = $request->query('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire());
+        $toutesAnnees = \App\Models\HistoriqueEleve::distinct()->pluck('annee_scolaire')->toArray();
+        if (!in_array($anneeActive, $toutesAnnees)) {
+            $toutesAnnees[] = $anneeActive;
+        }
+        sort($toutesAnnees);
 
-        // Fetch recent text notebooks
-        $recentCahiers = \App\Models\CahierTexte::with(['matiere', 'classe', 'professeur'])
-            ->orderBy('created_at', 'desc')
-            ->take(5)
-            ->get()
-            ->map(function ($c) {
-                return [
-                    'id' => 'c_'.$c->id,
-                    'action' => 'Nouveau Cahier',
-                    'model' => 'Leçon: ' . ($c->notion_cours ?? 'N/A'),
-                    'user_name' => $c->professeur ? $c->professeur->first_name . ' ' . $c->professeur->last_name : 'Professeur',
-                    'user_role' => 'Classe ' . ($c->classe->nom ?? 'N/A'),
-                    'created_at' => $c->created_at
-                ];
-            });
+        $classesCount = Classe::count();
+        $professeursCount = Professeur::count();
+        $notesPending = \App\Models\Note::where('is_validated', false)
+                            ->where('annee_scolaire', $anneeActive)
+                            ->count();
+        $elevesCount = \App\Models\Eleve::where('statut', 'actif')->count();
 
-        $recentLogs = collect($unvalidatedNotes)->merge($recentCahiers)->sortByDesc('created_at')->take(6)->values();
+        // Statistiques de prise de décision par salle (classe)
+        $classes = Classe::withCount(['eleves' => function($q) {
+            $q->where('statut', 'actif');
+        }])->get();
+        $decisionStats = [];
+
+        foreach($classes as $classe) {
+            $notes = \App\Models\Note::where('classe_id', $classe->id)
+                        ->where('annee_scolaire', $anneeActive)
+                        ->whereNotNull('moyenne_trimestrielle')
+                        ->get();
+            $moyenne = $notes->avg('moyenne_trimestrielle');
+            $passCount = $notes->where('moyenne_trimestrielle', '>=', 10)->count();
+            $passRate = $notes->count() > 0 ? round(($passCount / $notes->count()) * 100, 1) : 0;
+
+            $decisionStats[] = [
+                'id' => $classe->id,
+                'nom' => $classe->nom,
+                'effectif' => $classe->eleves_count,
+                'moyenne_generale' => $moyenne ? round($moyenne, 2) : 0,
+                'taux_reussite' => $passRate,
+                'total_notes' => $notes->count()
+            ];
+        }
+
+        // Trier par taux de réussite décroissant
+        usort($decisionStats, function($a, $b) {
+            return $b['taux_reussite'] <=> $a['taux_reussite'];
+        });
 
         $stats = [
-            'classes_count' => Classe::count(),
-            'professeurs_count' => Professeur::count(),
-            'notes_pending_validation' => \App\Models\Note::where('is_validated', false)->count(),
-            'eleves_count' => \App\Models\Eleve::count(),
-            'recent_logs' => $recentLogs
+            'classes_count' => $classesCount,
+            'professeurs_count' => $professeursCount,
+            'notes_pending_validation' => $notesPending,
+            'eleves_count' => $elevesCount,
+            'decision_stats' => $decisionStats,
+            'annee_scolaire_active' => $anneeActive,
+            'annees_disponibles' => $toutesAnnees
         ];
 
         return response()->json(['success' => true, 'data' => $stats]);
@@ -124,24 +135,23 @@ class CenseurController extends Controller
 
     public function getNotesValidationData(Request $request)
     {
-        $classeId = $request->query('classe_id');
-        $matiereId = $request->query('matiere_id');
-        $trimestre = $request->query('trimestre');
+        $query = \App\Models\Note::with(['eleve', 'classe', 'matiere'])
+            ->where('is_validated', false);
 
-        if (!$classeId || !$matiereId || !$trimestre) {
-            return response()->json(['success' => false, 'message' => 'Paramètres manquants'], 400);
+        if ($request->filled('classe_id')) {
+            $query->where('classe_id', $request->query('classe_id'));
+        }
+        if ($request->filled('matiere_id')) {
+            $query->where('matiere_id', $request->query('matiere_id'));
+        }
+        if ($request->filled('trimestre')) {
+            $query->where('trimestre', $request->query('trimestre'));
         }
 
-        $notes = \App\Models\Note::with(['eleve'])
-            ->where('classe_id', $classeId)
-            ->where('matiere_id', $matiereId)
-            ->where('trimestre', $trimestre)
-            ->get();
-            
-        // Assuming Note belongsTo Eleve
-        $notes = $notes->sortBy(function($note) {
-            return $note->eleve->nom;
-        })->values();
+        $notes = $query->get()
+            ->sortBy(function($note) {
+                return $note->eleve->nom;
+            })->values();
 
         return response()->json(['success' => true, 'notes' => $notes]);
     }
@@ -243,50 +253,6 @@ class CenseurController extends Controller
         $cahiers = $query->orderBy('date_cours', 'desc')->paginate(20);
 
         return response()->json(['success' => true, 'data' => $cahiers]);
-    }
-
-    // === SUIVI PEDAGOGIQUE (TIMELINE) ===
-    public function suiviPedagogique()
-    {
-        // 50 Dernières Notes
-        $notes = \App\Models\Note::with(['eleve', 'matiere', 'professeur', 'classe'])
-            ->orderBy('updated_at', 'desc')
-            ->take(50)
-            ->get()
-            ->map(function ($note) {
-                return [
-                    'id' => 'n_'.$note->id,
-                    'type' => 'note',
-                    'action_label' => 'Saisie de Notes',
-                    'created_at' => $note->updated_at,
-                    'professeur_nom' => $note->professeur ? $note->professeur->first_name . ' ' . $note->professeur->last_name : 'Inconnu',
-                    'matiere_nom' => $note->matiere ? $note->matiere->nom : 'Inconnue',
-                    'classe_nom' => $note->classe ? $note->classe->nom : 'Inconnue',
-                    'details' => "Mise à jour du carnet de notes de l'élève " . ($note->eleve ? $note->eleve->first_name . ' ' . $note->eleve->last_name : 'Inconnu') . " (Trimestre {$note->trimestre})",
-                ];
-            });
-
-        // 50 Derniers Cahiers de Texte
-        $cahiers = \App\Models\CahierTexte::with(['matiere', 'professeur', 'classe'])
-            ->orderBy('created_at', 'desc')
-            ->take(50)
-            ->get()
-            ->map(function ($c) {
-                return [
-                    'id' => 'c_'.$c->id,
-                    'type' => 'cahier',
-                    'action_label' => 'Cahier de Texte',
-                    'created_at' => $c->created_at,
-                    'professeur_nom' => $c->professeur ? $c->professeur->first_name . ' ' . $c->professeur->last_name : 'Inconnu',
-                    'matiere_nom' => $c->matiere ? $c->matiere->nom : 'Inconnue',
-                    'classe_nom' => $c->classe ? $c->classe->nom : 'Inconnue',
-                    'details' => "Notions: " . ($c->notion_cours ?? 'Non renseigné') . " | Travail: " . ($c->travail_a_faire ?: 'Aucun'),
-                ];
-            });
-
-        $timeline = collect($notes)->merge($cahiers)->sortByDesc('created_at')->take(50)->values();
-
-        return response()->json(['success' => true, 'data' => $timeline]);
     }
 
     private function logAction($action, $model, $modelId, $changes)

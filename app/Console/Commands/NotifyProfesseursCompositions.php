@@ -77,11 +77,7 @@ class NotifyProfesseursCompositions extends Command
                 $texteWhatsapp .= "Merci de prendre les dispositions nécessaires pour la préparation des sujets. Bonne journée !";
 
                 try {
-<<<<<<< HEAD
                     $response = Http::post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/api/messages/send', [
-=======
-                    $response = Http::post('http://localhost:3000/api/messages/send', [
->>>>>>> 86ba345f0bb0bd355b6e2eebc5f3be32c46379ee
                         'phone' => $professeur->phone,
                         'message' => $texteWhatsapp
                     ]);
