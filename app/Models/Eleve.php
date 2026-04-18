@@ -26,6 +26,7 @@ class Eleve extends Authenticatable
         'nom_parent',
         'telephone_parent',
         'repetiteur_whatsapp',
+        'repetiteurs',
         'photo',
         'classe_id',
         'statut',
@@ -43,6 +44,7 @@ class Eleve extends Authenticatable
 
     protected $casts = [
         'date_naissance' => 'date',
+        'repetiteurs' => 'array',
     ];
 
     /**

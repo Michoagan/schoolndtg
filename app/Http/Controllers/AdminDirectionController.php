@@ -265,4 +265,15 @@ class AdminDirectionController extends Controller
             'accounts' => $accounts,
         ]);
     }
+
+    public function systemLogs(Request $request)
+    {
+        $page = $request->input('page', 1);
+        $logs = \App\Models\ModificationLog::orderBy('created_at', 'desc')->paginate(50);
+        
+        return response()->json([
+            'success' => true,
+            'data' => $logs
+        ]);
+    }
 }
