@@ -424,6 +424,43 @@ class DirecteurController extends Controller
         ]);
     }
 
+    public function getComptabiliteStats(Request $request)
+    {
+        $anneeScolaire = $request->query('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire());
+        
+        // Monthly statistics for the last 6 months or current year
+        $stats = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $month = \Carbon\Carbon::now()->subMonths($i);
+            $start = $month->copy()->startOfMonth();
+            $end = $month->copy()->endOfMonth();
+
+            $scolarite = Paiement::where('statut', 'success')
+                ->where('annee_scolaire', $anneeScolaire)
+                ->whereBetween('date_paiement', [$start, $end])
+                ->sum('montant');
+
+            $ventes = \App\Models\Vente::whereBetween('date_vente', [$start, $end])
+                ->sum('montant_total');
+
+            $depenses = \App\Models\Depense::whereBetween('date_depense', [$start, $end])
+                ->sum('montant');
+
+            $stats[] = [
+                'mois' => $month->translatedFormat('M'),
+                'revenu' => (float) ($scolarite + $ventes),
+                'depense' => (float) $depenses,
+                'solde' => (float) ($scolarite + $ventes - $depenses)
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'stats_mensuelles' => $stats,
+            'annee_scolaire' => $anneeScolaire
+        ]);
+    }
+
     public function gestionNotes(Request $request)
     {
         // Récupérer les filtres

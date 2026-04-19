@@ -145,7 +145,16 @@ class CenseurController extends Controller
             // Or detailed sync (more complex). We'll assume full replace per class for simplicity of UI
             EmploiDuTemps::where('classe_id', $classeId)->delete();
 
+            // Filter duplicates by jour + heure_debut
+            $uniqueSlots = [];
             foreach ($request->slots as $slot) {
+                $key = $slot['jour'] . '_' . $slot['heure_debut'];
+                if (!isset($uniqueSlots[$key])) {
+                    $uniqueSlots[$key] = $slot;
+                }
+            }
+
+            foreach ($uniqueSlots as $slot) {
                 EmploiDuTemps::create([
                     'classe_id' => $classeId,
                     'matiere_id' => $slot['matiere_id'],

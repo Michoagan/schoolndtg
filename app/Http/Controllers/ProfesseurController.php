@@ -10,8 +10,10 @@ use App\Models\Matiere;
 use App\Models\Note;
 use App\Models\PasswordResetCode;
 use App\Models\Professeur;
+use App\Models\Salaire;
 use App\Notifications\PasswordResetCodeNotification;
 use App\Notifications\ProfessorAccountCreatedNotification;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -1746,5 +1748,71 @@ class ProfesseurController extends Controller
                 'message' => 'Une erreur est survenue lors du chargement des classes.',
             ], 500);
         }
+    }
+
+    /**
+     * Récupérer les salaires du professeur connecté
+     */
+    public function mesSalaires()
+    {
+        $professeurId = Auth::id();
+        $salaires = Salaire::where('professeur_id', $professeurId)
+            ->orderBy('annee', 'desc')
+            ->orderBy('mois', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'salaires' => $salaires,
+        ]);
+    }
+
+    /**
+     * Accuser réception du salaire payé
+     */
+    public function accuseReceptionSalaire($id)
+    {
+        $salaire = Salaire::findOrFail($id);
+
+        if ($salaire->professeur_id !== Auth::id()) {
+            return response()->json(['success' => false, 'message' => 'Non autorisé'], 403);
+        }
+
+        if ($salaire->statut !== 'paye') {
+            return response()->json(['success' => false, 'message' => 'Salaire non encore payé'], 400);
+        }
+
+        $salaire->update([
+            'accuse_reception' => true,
+            'date_accuse' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Réception confirmée avec succès.',
+            'salaire' => $salaire
+        ]);
+    }
+
+    /**
+     * Télécharger la fiche de paie en PDF
+     */
+    public function downloadFichePaieProfesseur($id)
+    {
+        $salaire = Salaire::with(['professeur', 'directionUser'])->findOrFail($id);
+
+        if ($salaire->professeur_id !== Auth::id()) {
+            abort(403, 'Non autorisé');
+        }
+
+        $pdf = Pdf::loadView('pdf.fiche_paie', [
+            'salaire' => $salaire
+        ]);
+        
+        $employe = $salaire->professeur;
+        $nom = $employe ? str_replace(' ', '_', $employe->last_name . '_' . $employe->first_name) : 'Anonyme';
+        $filename = "fiche_paie_{$salaire->mois}_{$salaire->annee}_{$nom}.pdf";
+
+        return $pdf->download($filename);
     }
 }

@@ -91,7 +91,7 @@ class PerformanceController extends Controller
     public function getPerformanceAuditIa($id)
     {
         // Réutiliser la logique de statistiques
-        $statsResponse = $this->getPerformanceStats($id);
+        $statsResponse = $this->getPerformanceStats(new Request(), $id);
         $data = json_decode($statsResponse->getContent(), true);
 
         $profNom = $data['professeur']['nom_complet'];
@@ -108,6 +108,52 @@ class PerformanceController extends Controller
         return response()->json([
             'success' => true,
             'audit_ia' => $auditIa
+        ]);
+    }
+
+    /**
+     * Obtenir les performances de tous les professeurs pour le Directeur
+     */
+    public function getGlobalPerformance(Request $request)
+    {
+        $anneeActive = $request->query('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire());
+        $professeurs = Professeur::where('is_active', true)->with('matiere')->get();
+
+        $stats = $professeurs->map(function($prof) use ($anneeActive) {
+            // Assiduité
+            $totalHeuresPrevu = Presence::where('professeur_id', $prof->id)->where('annee_scolaire', $anneeActive)->count();
+            $heuresAssurees = Presence::where('professeur_id', $prof->id)->where('annee_scolaire', $anneeActive)->where('present', true)->count();
+            $tauxAssiduite = $totalHeuresPrevu > 0 ? round(($heuresAssurees / $totalHeuresPrevu) * 100, 1) : 100;
+
+            // Programme
+            $heuresEffectueesReelles = CahierTexte::where('professeur_id', $prof->id)->where('annee_scolaire', $anneeActive)->sum('duree_cours');
+            $objectifMoyenHeure = 40; 
+            $tauxProgression = round(($heuresEffectueesReelles / $objectifMoyenHeure) * 100, 1);
+
+            // Impact (Notes)
+            $notes = Note::where('professeur_id', $prof->id)->where('annee_scolaire', $anneeActive)->get();
+            $tauxReussite = 0;
+            if ($notes->count() > 0) {
+                $notesAuDessusMoyenne = $notes->filter(function($note) {
+                    $noteSur = $note->note_sur ?? 20;
+                    return $noteSur > 0 && ($note->valeur / $noteSur) >= 0.5;
+                })->count();
+                $tauxReussite = round(($notesAuDessusMoyenne / $notes->count()) * 100, 1);
+            }
+
+            return [
+                'id' => $prof->id,
+                'nom_complet' => $prof->full_name,
+                'matiere' => $prof->matiere->nom ?? 'N/A',
+                'assiduite' => $tauxAssiduite,
+                'programme' => $tauxProgression > 100 ? 100 : $tauxProgression,
+                'impact' => $tauxReussite
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'stats' => $stats
         ]);
     }
 }

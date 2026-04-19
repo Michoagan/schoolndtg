@@ -13,11 +13,14 @@ class Salaire extends Model
         'professeur_id', 'direction_user_id', 'mois', 'annee', 
         'heures_travaillees', 'taux_horaire', 
         'montant_base', 'primes', 'retenues', 
-        'net_a_payer', 'statut', 'date_paiement'
+        'net_a_payer', 'statut', 'date_paiement',
+        'accuse_reception', 'date_accuse'
     ];
 
     protected $casts = [
         'date_paiement' => 'date',
+        'accuse_reception' => 'boolean',
+        'date_accuse' => 'datetime',
     ];
 
     public function professeur()

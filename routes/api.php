@@ -78,6 +78,8 @@ Route::prefix('eleve')->group(function () {
         Route::get('/notes', [EleveController::class, 'getNotes']);
         Route::get('/epreuves', [EleveController::class, 'getAnciennesEpreuves']);
         Route::get('/exercices', [EleveController::class, 'getExercices']);
+        Route::get('/contacts', [EleveController::class, 'getContacts']);
+        Route::get('/archives', [EleveController::class, 'getArchives']);
     });
 });
 
@@ -134,6 +136,8 @@ Route::middleware('auth:sanctum')->group(function () {
             // Les paiements et ventes ont été déplacés vers le prefix 'caisse'.
 
             // Salaires
+            Route::get('/salaires/config', [\App\Http\Controllers\ComptabiliteController::class, 'getConfiguration']);
+            Route::post('/salaires/config', [\App\Http\Controllers\ComptabiliteController::class, 'saveConfiguration']);
             Route::get('/salaires', [\App\Http\Controllers\ComptabiliteController::class, 'salaires']);
             Route::post('/salaires/generate', [\App\Http\Controllers\ComptabiliteController::class, 'generateSalaires']);
             Route::put('/salaires/{id}', [\App\Http\Controllers\ComptabiliteController::class, 'updateSalaire']);
@@ -164,6 +168,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/dashboard', [\App\Http\Controllers\CaisseController::class, 'dashboard']);
 
             // Ventes (Autres Recettes)
+            Route::get('/ventes', [\App\Http\Controllers\CaisseController::class, 'indexVentes']);
             Route::post('/ventes', [\App\Http\Controllers\CaisseController::class, 'storeVente']);
             Route::get('/ventes/{vente}/receipt', [\App\Http\Controllers\CaisseController::class, 'downloadVenteReceipt']);
             Route::get('/ventes/{vente}/qrcode', [\App\Http\Controllers\CaisseController::class, 'getVenteQrCode']); // React Endpoint
@@ -175,12 +180,32 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/paiements/{paiement}/qrcode', [\App\Http\Controllers\CaisseController::class, 'getPaiementQrCode']); // React Endpoint
         });
 
+        // SURVEILLANT
+        Route::prefix('surveillant')->middleware('role:surveillant,directeur,censeur')->group(function () {
+            Route::get('/dashboard', [\App\Http\Controllers\SurveillantController::class, 'dashboard']);
+            Route::get('/stats', [\App\Http\Controllers\SurveillantController::class, 'stats']);
+            Route::get('/plaintes/recentes', [\App\Http\Controllers\SurveillantController::class, 'plaintesRecent']);
+            Route::get('/plaintes', [\App\Http\Controllers\SurveillantController::class, 'historiquePlaintes']);
+            Route::post('/plaintes', [\App\Http\Controllers\SurveillantController::class, 'storePlainte']);
+            
+            Route::get('/evenements', [\App\Http\Controllers\SurveillantController::class, 'evenements']);
+            Route::get('/evenements/prochains', [\App\Http\Controllers\SurveillantController::class, 'evenementsProchains']);
+            Route::post('/evenements', [\App\Http\Controllers\SurveillantController::class, 'storeEvenement']);
+            
+            Route::get('/presences/eleves', [\App\Http\Controllers\SurveillantController::class, 'getPresencesEleves']);
+            Route::get('/presences/professeurs', [\App\Http\Controllers\SurveillantController::class, 'getPresencesProfesseurs']);
+        });
+
         // Tableaux de bord (JSON expected from controllers)
         Route::get('/censeur', [DirectionController::class, 'censeurDashboard'])->middleware('role:censeur,directeur');
         Route::get('/directeur', [\App\Http\Controllers\DirecteurController::class, 'dashboard'])->middleware('role:directeur');
+        Route::get('/directeur/comptabilite-stats', [\App\Http\Controllers\DirecteurController::class, 'getComptabiliteStats'])->middleware('role:directeur');
 
         // Settings Update (Direction only)
         Route::post('/settings', [\App\Http\Controllers\SettingsController::class, 'update'])->middleware('role:directeur,admin');
+
+        // Clôture Année
+        Route::post('/cloturer-annee', [\App\Http\Controllers\DirecteurController::class, 'cloturerAnneeScolaire'])->middleware('role:directeur');
     });
 
     // Global Settings (Readable by all authenticated users: Direction, Censeur, Professeur, Secretaire, Parent)
@@ -240,6 +265,11 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::get('/dashboard', [ProfesseurController::class, 'dashboard']);
                 Route::post('/logout', [ProfesseurController::class, 'logout']);
                 Route::get('/emploi-du-temps', [ProfesseurController::class, 'emploiDuTemps']);
+                
+                // Salaires
+                Route::get('/mes-salaires', [ProfesseurController::class, 'mesSalaires']);
+                Route::post('/mes-salaires/{id}/accuse', [ProfesseurController::class, 'accuseReceptionSalaire']);
+                Route::get('/mes-salaires/{id}/fiche', [ProfesseurController::class, 'downloadFichePaieProfesseur']);
             });
 
             Route::get('/presences/eleves/{classe}', [ProfesseurController::class, 'getElevesByClasse']);
@@ -255,6 +285,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
             // Performance & IA
             Route::get('/{id}/performance', [\App\Http\Controllers\Api\PerformanceController::class, 'getPerformanceStats']);
+            Route::get('/global-performance', [\App\Http\Controllers\Api\PerformanceController::class, 'getGlobalPerformance']);
             Route::get('/{id}/audit-ia', [\App\Http\Controllers\Api\PerformanceController::class, 'getPerformanceAuditIa']);
         });
     });
@@ -313,6 +344,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // ====================
     Route::prefix('secretaire')->middleware('role:secretariat,directeur')->group(function () {
         Route::get('/eleves', [EleveController::class, 'index']);
+        Route::get('/eleves/en-attente', [EleveController::class, 'getElevesEnAttente']);
+        Route::post('/eleves/affecter', [EleveController::class, 'affecterClasses']);
         Route::post('/eleves', [EleveController::class, 'store']);
         Route::post('/eleves/import', [EleveController::class, 'import']); // Added import route
         Route::put('/eleves/{eleve}', [EleveController::class, 'update']);
@@ -374,9 +407,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/notifications/{id}/read', [TuteurController::class, 'markNotificationAsRead']);
 
         // Paiements
-        Route::get('/paiements', [PaiementController::class, 'index']);
-        Route::get('/paiements/{id}/receipt', [PaiementController::class, 'generateReceipt']);
-        Route::post('/process-payment', [PaiementController::class, 'processPayment']);
+    Route::get('/paiements', [PaiementController::class, 'index']);
+    Route::post('/process-payment', [PaiementController::class, 'processPayment']);
+    Route::get('/paiements/{id}/receipt', [PaiementController::class, 'generateReceipt']);
+    
+    // Archives
+    Route::get('/archives', [TuteurController::class, 'getArchives']);
         Route::get('/payment/callback/{method}', [PaiementController::class, 'handleCallback'])->name('parent.payment-callback');
         
         // Répétiteur

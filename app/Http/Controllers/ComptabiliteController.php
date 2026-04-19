@@ -63,6 +63,10 @@ class ComptabiliteController extends Controller
         
         $soldeNet = $totalEntrees - $totalSorties;
 
+        // Salaires Impayés (Dettes)
+        $salairesImpayes = \App\Models\Salaire::where('statut', '!=', 'paye')
+            ->sum('net_a_payer');
+
         // --- 2. BILAN INVENTAIRE (Patrimoine) ---
         
         // Valeur Totale du Stock Physique
@@ -100,6 +104,7 @@ class ComptabiliteController extends Controller
                 'sorties' => [
                     'salaires' => $totalSalaires,
                     'depenses_generales' => $totalDepensesGenerales,
+                    'salaires_impayes' => $salairesImpayes,
                     'total' => $totalSorties
                 ],
                 'solde_net' => $soldeNet
@@ -375,6 +380,55 @@ class ComptabiliteController extends Controller
     }
 
     /**
+     * Obtenir la configuration de paie (Personnel et Professeurs)
+     */
+    public function getConfiguration()
+    {
+        $professeurs = \App\Models\Professeur::all(['id', 'first_name', 'last_name', 'taux_horaire', 'role']);
+        $personnel = \App\Models\Direction::all(['id', 'first_name', 'last_name', 'salaire_base', 'role']);
+
+        return response()->json([
+            'success' => true,
+            'professeurs' => $professeurs,
+            'personnel' => $personnel
+        ]);
+    }
+
+    /**
+     * Sauvegarder la configuration de paie
+     */
+    public function saveConfiguration(Request $request)
+    {
+        $request->validate([
+            'professeurs' => 'array',
+            'personnel' => 'array',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            if ($request->has('professeurs')) {
+                foreach ($request->professeurs as $profData) {
+                    \App\Models\Professeur::where('id', $profData['id'])->update([
+                        'taux_horaire' => $profData['taux_horaire']
+                    ]);
+                }
+            }
+            if ($request->has('personnel')) {
+                foreach ($request->personnel as $persData) {
+                    \App\Models\Direction::where('id', $persData['id'])->update([
+                        'salaire_base' => $persData['salaire_base']
+                    ]);
+                }
+            }
+            DB::commit();
+            return response()->json(['success' => true, 'message' => 'Configuration sauvegardée avec succès.']);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Erreur lors de la sauvegarde.'], 500);
+        }
+    }
+
+    /**
      * Generer les salaires pour un mois/annee specifique.
      * Calcule le total d'heures base sur l'emploi du temps ou presence pour les profs, et le salaire de base pour la direction.
      */
@@ -400,8 +454,14 @@ class ComptabiliteController extends Controller
 
             if ($exists) continue;
 
-            $heures = 120; // Example static 120 hours
-            $taux = $prof->taux_horaire ?? 5000;
+            $taux = $prof->taux_horaire ?? 0;
+            // Pour les professeurs particuliers ou avec taux horaire, on se base sur le cahier de texte.
+            // Si pas d'heures calculées, on met 0 par défaut pour le moment.
+            $heures = \App\Models\CahierTexte::where('professeur_id', $prof->id)
+                ->whereMonth('date_cours', $mois)
+                ->whereYear('date_cours', $annee)
+                ->sum('duree_cours');
+                
             $base = $heures * $taux;
 
             \App\Models\Salaire::create([
