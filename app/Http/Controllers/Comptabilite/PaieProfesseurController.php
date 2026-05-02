@@ -140,4 +140,92 @@ class PaieProfesseurController extends Controller
             'paies' => $resultats
         ]);
     }
+
+    // Valider et envoyer les fiches de paie dans les comptes des professeurs
+    public function validerPaies(Request $request)
+    {
+        $request->validate([
+            'mois' => 'required|integer|min:1|max:12',
+            'annee' => 'required|integer'
+        ]);
+
+        $mois = $request->mois;
+        $annee = $request->annee;
+
+        DB::beginTransaction();
+        try {
+            // On réutilise la logique de génération pour avoir les montants exacts
+            $professeurs = Professeur::all();
+            $paiesEnvoyees = 0;
+
+            foreach ($professeurs as $prof) {
+                // Heures non encore payées pour ce mois
+                $heuresEffectuees = CahierTexte::where('professeur_id', $prof->id)
+                    ->whereMonth('date_cours', $mois)
+                    ->whereYear('date_cours', $annee)
+                    ->whereNull('paiement_id') // Seulement celles non payées !
+                    ->get();
+
+                $totalHeuresVol = 0;
+                $montantHeures = 0;
+                $montantPrimes = 0;
+                
+                $heuresParClasse = $heuresEffectuees->groupBy('classe_id');
+                $tauxConfigures = TauxHoraire::where('professeur_id', $prof->id)->get();
+
+                if ($heuresEffectuees->isEmpty() && $tauxConfigures->isEmpty()) {
+                    continue; 
+                }
+
+                foreach($heuresParClasse as $classeId => $coursList) {
+                    $heures = $coursList->sum('duree_cours');
+                    $totalHeuresVol += $heures;
+
+                    $tauxSpecifique = $tauxConfigures->firstWhere('classe_id', $classeId);
+                    $tauxGlobal = $tauxConfigures->firstWhere('classe_id', null);
+                    $tauxApplique = $tauxSpecifique ? $tauxSpecifique->taux_horaire : ($tauxGlobal ? $tauxGlobal->taux_horaire : 0);
+                    
+                    $montantHeures += ($heures * $tauxApplique);
+                }
+
+                foreach($tauxConfigures as $tc) {
+                    $montantPrimes += $tc->prime_mensuelle;
+                }
+
+                $montantTotal = $montantHeures + $montantPrimes;
+
+                if ($montantTotal > 0 || $totalHeuresVol > 0) {
+                    // Créer l'enregistrement de paiement
+                    $paiement = PaiementProfesseur::updateOrCreate(
+                        ['professeur_id' => $prof->id, 'mois' => $mois, 'annee' => $annee],
+                        [
+                            'total_heures' => $totalHeuresVol,
+                            'montant_heures' => $montantHeures,
+                            'montant_primes' => $montantPrimes,
+                            'montant_total' => $montantTotal,
+                            'statut' => 'paye', // ou 'en_attente' selon le workflow. "paye" affichera "Payé" sur le mobile
+                            'date_paiement' => now()
+                        ]
+                    );
+
+                    // Lier les heures du cahier de texte à ce paiement
+                    CahierTexte::whereIn('id', $heuresEffectuees->pluck('id'))->update([
+                        'paiement_id' => $paiement->id
+                    ]);
+
+                    $paiesEnvoyees++;
+                }
+            }
+
+            DB::commit();
+            return response()->json([
+                'success' => true, 
+                'message' => "$paiesEnvoyees fiches de paie validées et envoyées aux professeurs."
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Erreur de validation: '.$e->getMessage()], 500);
+        }
+    }
 }
+

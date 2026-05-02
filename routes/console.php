@@ -11,4 +11,3 @@ use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('app:send-exam-reminders')->dailyAt('08:00');
 Schedule::command('app:send-fee-reminders')->dailyAt('08:00');
-Schedule::command('notify:compositions')->dailyAt('08:00');

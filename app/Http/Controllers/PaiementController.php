@@ -7,15 +7,9 @@ use App\Models\Paiement;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
-use Barryvdh\DomPDF\Facade\Pdf;
-use Endroid\QrCode\QrCode;
-use Endroid\QrCode\Writer\PngWriter;
-use Endroid\QrCode\Color\Color;
-use Endroid\QrCode\Encoding\Encoding;
-use Endroid\QrCode\ErrorCorrectionLevel;
-use Endroid\QrCode\RoundBlockSizeMode;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\PaymentReceiptMail;
+
 
 class PaiementController extends Controller
 {
@@ -78,8 +72,13 @@ class PaiementController extends Controller
             'montant_total' => 'required|numeric',
         ]);
 
-        // Calculer le solde restant
-        $eleve = Eleve::find($request->eleve_id);
+        // SÉCURITÉ [HIGH-1]: Vérifier que l'élève appartient bien au parent authentifié (protection IDOR)
+        $parent = \Illuminate\Support\Facades\Auth::user();
+        if (!$parent instanceof \App\Models\Tuteur) {
+            return response()->json(['error' => 'Non autorisé'], 403);
+        }
+        $eleve = $parent->eleves()->findOrFail($request->eleve_id); // Lève un 404 si l'élève n'appartient pas à ce parent
+
         $totalPaye = Paiement::where('eleve_id', $eleve->id)->where('statut', 'success')->sum('montant');
         $soldeRestant = $request->montant_total - $totalPaye;
 
@@ -124,8 +123,12 @@ class PaiementController extends Controller
 
     private function processKkiaPay($transaction)
     {
-        // Configuration KkiaPay
-        $apiKey = env('KKIAPAY_PUBLIC_KEY', 'c67683ac89ca27a988244dac8415d4e6d8a82511');
+        // SÉCURITÉ: Jamais de clé hardcodée - on échoue de manière sûr si la variable est absente
+        $apiKey = env('KKIAPAY_PUBLIC_KEY');
+        if (!$apiKey) {
+            Log::critical('KKIAPAY_PUBLIC_KEY manquante dans .env');
+            return response()->json(['success' => false, 'message' => 'Configuration de paiement non disponible.'], 500);
+        }
         $callbackUrl = route('parent.payment-callback', ['method' => 'kkiapay']);
 
         // Stocker l'ID de transaction en session pour la vérification après paiement
@@ -144,7 +147,11 @@ class PaiementController extends Controller
         $transactionId = $request->query('transaction_id');
         $transaction = Paiement::findOrFail($transactionId);
 
-        $apiKey = env('KKIAPAY_PUBLIC_KEY', 'c67683ac89ca27a988244dac8415d4e6d8a82511');
+        // SÉCURITÉ: Jamais de clé hardcodée
+        $apiKey = env('KKIAPAY_PUBLIC_KEY');
+        if (!$apiKey) {
+            abort(500, 'Configuration de paiement non disponible.');
+        }
         $callbackUrl = route('parent.payment-callback', ['method' => 'kkiapay', 'local_id' => $transaction->id]);
 
         return view('kkiapay_checkout', [
@@ -304,39 +311,8 @@ class PaiementController extends Controller
     {
         $paiement->load(['eleve', 'eleve.classe', 'eleve.tuteurs']);
         
-        // Generate QR code locally via endroid/qr-code
-        $qrData = [
-            'recu_id' => $paiement->id,
-            'reference' => $paiement->reference_externe ?? $paiement->reference,
-            'eleve' => $paiement->eleve->nom . ' ' . $paiement->eleve->prenom,
-            'montant' => $paiement->montant,
-            'date' => $paiement->date_paiement ? \Carbon\Carbon::parse($paiement->date_paiement)->format('d/m/Y H:i') : null,
-            'statut' => 'Payé'
-        ];
-
-        $qrText = json_encode($qrData);
-
-        // QR Code config
-        $qrCode = QrCode::create($qrText)
-            ->setEncoding(new Encoding('UTF-8'))
-            ->setErrorCorrectionLevel(ErrorCorrectionLevel::Low)
-            ->setSize(100)
-            ->setMargin(10)
-            ->setRoundBlockSizeMode(RoundBlockSizeMode::Margin)
-            ->setForegroundColor(new Color(0, 0, 0))
-            ->setBackgroundColor(new Color(255, 255, 255));
-
-        $writer = new PngWriter();
-        $qrCodeResult = $writer->write($qrCode);
-        $qrCodeImage = base64_encode($qrCodeResult->getString());
-
-        $pdf = Pdf::loadView('pdf.receipt', [
-            'paiement' => $paiement,
-            'qrCodeImage' => $qrCodeImage,
-            'date_generation' => now()->format('d/m/Y H:i:s')
-        ]);
-        
-        $pdfContent = $pdf->output();
+        // Le PDF n'est plus généré par le backend. L'email contient juste les informations HTML.
+        $pdfContent = null;
 
         // Send email to parent if email exists
         $parent = $paiement->eleve->tuteurs->first();
@@ -372,41 +348,11 @@ class PaiementController extends Controller
             return response()->json(['success' => false, 'message' => 'Le reçu n\'est disponible que pour les paiements réussis.'], 400);
         }
 
-        // Generate QR code locally via endroid/qr-code
-        $qrData = [
-            'recu_id' => $paiement->id,
-            'reference' => $paiement->reference_externe ?? $paiement->reference,
-            'eleve' => $paiement->eleve->nom . ' ' . $paiement->eleve->prenom,
-            'montant' => $paiement->montant,
-            'date' => $paiement->date_paiement ? \Carbon\Carbon::parse($paiement->date_paiement)->format('d/m/Y H:i') : null,
-            'statut' => 'Payé'
-        ];
-
-        $qrText = json_encode($qrData);
-
-        // QR Code config
-        $qrCode = QrCode::create($qrText)
-            ->setEncoding(new Encoding('UTF-8'))
-            ->setErrorCorrectionLevel(ErrorCorrectionLevel::Low)
-            ->setSize(100)
-            ->setMargin(10)
-            ->setRoundBlockSizeMode(RoundBlockSizeMode::Margin)
-            ->setForegroundColor(new Color(0, 0, 0))
-            ->setBackgroundColor(new Color(255, 255, 255));
-
-        $writer = new PngWriter();
-        $qrCodeResult = $writer->write($qrCode);
-        $qrCodeImage = base64_encode($qrCodeResult->getString());
-
-        $pdf = Pdf::loadView('pdf.receipt', [
-            'paiement' => $paiement,
-            'qrCodeImage' => $qrCodeImage,
-            'date_generation' => now()->format('d/m/Y H:i:s')
+        // Renvoie uniquement les données JSON pour que le frontend génère le PDF et le QR code localement
+        return response()->json([
+            'success' => true,
+            'paiement' => $paiement
         ]);
-
-        return response($pdf->output(), 200)
-            ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', "inline; filename=\"$filename\"");
     }
 
     // Méthode pour vérifier manuellement le statut d'un paiement

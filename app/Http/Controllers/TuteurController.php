@@ -512,19 +512,12 @@ class TuteurController extends Controller
                 })->values();
             });
 
-        $aiService = app(\App\Services\AiService::class);
-        $conseilIa = $aiService->analyzeStudentGrades(
-            $progression[0] != 0 ? $progression[0] : 0, 
-            $performancesMatieres
-        );
-
         return response()->json([
             'success' => true,
             'eleve' => $eleve,
             'moyenne_generale' => $progression[0] != 0 ? $progression[0] : 0, // Exemple: T1
             'progression' => $progression,
             'performances_matieres' => $performancesMatieres,
-            'conseil_ia' => $conseilIa,
             'notes_par_trimestre' => $notesParTrimestre,
             'notes_examens' => $notesExamens,
             'recent_notes' => $notes->take(10)->map(function($note) {
@@ -1003,22 +996,19 @@ class TuteurController extends Controller
     public function updateRepetiteur(Request $request, $id)
     {
         $request->validate([
-            'repetiteurs' => 'nullable|array',
-            'repetiteurs.*.whatsapp' => 'required|string',
-            'repetiteurs.*.matieres' => 'nullable|array',
-            'repetiteurs.*.matieres.*' => 'integer|exists:matieres,id',
+            'repetiteur_whatsapp' => 'nullable|string',
         ]);
 
         /** @var \App\Models\Tuteur $parent */
         $parent = Auth::user();
         $eleve = $parent->eleves()->findOrFail($id);
 
-        $eleve->repetiteurs = $request->repetiteurs;
+        $eleve->repetiteur_whatsapp = $request->repetiteur_whatsapp;
         $eleve->save();
 
         return response()->json([
             'success' => true,
-            'message' => 'Les informations des répétiteurs ont été mises à jour avec succès.',
+            'message' => 'Numéro du répétiteur mis à jour avec succès.',
             'eleve' => $eleve
         ]);
     }

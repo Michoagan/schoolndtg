@@ -69,7 +69,9 @@ class Professeur extends Authenticatable
      */
     public function getPhotoUrlAttribute()
     {
-        return $this->photo ? asset('storage/professeurs/'.$this->photo) : asset('images/default-avatar.png');
+        if (!$this->photo) return asset('images/default-avatar.png');
+        if (str_starts_with($this->photo, 'http')) return $this->photo;
+        return asset('storage/professeurs/'.$this->photo);
     }
 
     public function classesPrincipales(): HasMany

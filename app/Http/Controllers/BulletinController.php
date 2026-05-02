@@ -8,14 +8,6 @@ use App\Models\Classe;
 use App\Models\Matiere;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Barryvdh\DomPDF\Facade\Pdf;
-use Endroid\QrCode\QrCode;
-use Endroid\QrCode\Writer\PngWriter;
-use Endroid\QrCode\Color\Color;
-use Endroid\QrCode\Encoding\Encoding;
-use Endroid\QrCode\ErrorCorrectionLevel;
-use Endroid\QrCode\RoundBlockSizeMode;
-use Endroid\QrCode\Writer\Result\PngResult;
 
 class BulletinController extends Controller
 {
@@ -199,55 +191,5 @@ class BulletinController extends Controller
         }
         
         return $rang;
-    }
-    
-     public function generatePDF($eleveId, $trimestre)
-    {
-        $bulletinData = $this->getBulletinData($eleveId, $trimestre);
-        
-        if (!$bulletinData['success']) {
-            abort(404, 'Bulletin non trouvé');
-        }
-        
-        $anneeScolaire = \App\Models\Setting::where('key', 'current_annee_scolaire')->value('value') ?? '2025-2026';
-
-        // Générer le QR code localement avec endroid/qr-code
-        $qrData = [
-            'eleve_id' => $bulletinData['eleve']->id,
-            'nom' => $bulletinData['eleve']->nom,
-            'prenom' => $bulletinData['eleve']->prenom,
-            'classe' => $bulletinData['eleve']->classe->nom,
-            'trimestre' => $trimestre,
-            'moyenne' => $bulletinData['moyenne_generale'],
-            'annee_scolaire' => $anneeScolaire
-        ];
-        
-        $qrText = json_encode($qrData);
-        
-        // Créer le QR code
-        $result = \Endroid\QrCode\Builder\Builder::create()
-            ->writer(new PngWriter())
-            ->data($qrText)
-            ->encoding(new Encoding('UTF-8'))
-            ->errorCorrectionLevel(ErrorCorrectionLevel::Low)
-            ->size(100)
-            ->margin(10)
-            ->roundBlockSizeMode(RoundBlockSizeMode::Margin)
-            ->foregroundColor(new Color(0, 0, 0))
-            ->backgroundColor(new Color(255, 255, 255))
-            ->build();
-        
-        // Convertir en base64 pour l'affichage dans le PDF
-        $qrCodeImage = base64_encode($result->getString());
-        
-        $pdf = Pdf::loadView('pdf.bulletin', [
-            'data' => $bulletinData,
-            'trimestre' => $trimestre,
-            'qrCodeImage' => $qrCodeImage
-        ]);
-        
-        $filename = "bulletin_{$bulletinData['eleve']->nom}_{$bulletinData['eleve']->prenom}_T{$trimestre}.pdf";
-        
-        return $pdf->download($filename);
     }
 }

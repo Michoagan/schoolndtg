@@ -59,54 +59,14 @@ class CaisseController extends Controller
     /**
      * Liste de tous les paiements (Scolarité) pour la Caisse (Année en cours).
      */
-    public function indexPaiements(Request $request)
+    public function indexPaiements()
     {
-        $query = Paiement::with(['eleve.classe', 'contribution'])
-            ->where('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire());
-
-        if ($request->filled('date')) {
-            $query->whereDate('date_paiement', $request->date);
-        }
-
-        if ($request->filled('classe_id')) {
-            $query->whereHas('eleve', function($q) use ($request) {
-                $q->where('classe_id', $request->classe_id);
-            });
-        }
-
-        if ($request->filled('methode')) {
-            $query->where('methode', $request->methode);
-        }
-
-        $paiements = $query->latest('date_paiement')->get();
+        $paiements = Paiement::with(['eleve.classe', 'contribution'])
+            ->where('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire())
+            ->latest('date_paiement')
+            ->get();
             
         return response()->json($paiements);
-    }
-
-    /**
-     * Liste des ventes (Autres recettes) avec filtres.
-     */
-    public function indexVentes(Request $request)
-    {
-        $query = Vente::with(['eleve.classe', 'lignes.article']);
-
-        if ($request->filled('date')) {
-            $query->whereDate('date_vente', $request->date);
-        }
-
-        if ($request->filled('nom_client')) {
-            $query->where(function($q) use ($request) {
-                $q->where('nom_client', 'like', '%' . $request->nom_client . '%')
-                  ->orWhereHas('eleve', function($sq) use ($request) {
-                      $sq->where('nom', 'like', '%' . $request->nom_client . '%')
-                        ->orWhere('prenom', 'like', '%' . $request->nom_client . '%');
-                  });
-            });
-        }
-
-        $ventes = $query->latest('date_vente')->get();
-
-        return response()->json($ventes);
     }
 
     /**

@@ -19,9 +19,10 @@ class NoteController extends Controller
         $user = Auth::user();
         $isProfesseur = $user instanceof \App\Models\Professeur;
         $isDirection = $user instanceof \App\Models\Direction;
+        $isAdmin = $user instanceof \App\Models\User;
 
         // Vérifier que c'est bien un professeur ou une direction
-        if (! $isProfesseur && ! $isDirection) {
+        if (! $isProfesseur && ! $isDirection && ! $isAdmin) {
             return response()->json(['error' => 'Non autorisé'], 403);
         }
 
@@ -81,7 +82,7 @@ class NoteController extends Controller
     {
         $user = Auth::user();
         $isProfesseur = $user instanceof \App\Models\Professeur;
-        $isCenseur = $user instanceof \App\Models\Direction && $user->isCenseur();
+        $isCenseur = ($user instanceof \App\Models\Direction && in_array($user->role, ['censeur', 'directeur'])) || $user instanceof \App\Models\User;
 
         if (! $isProfesseur && ! $isCenseur) {
             return response()->json(['error' => 'Non autorisé'], 403);
@@ -189,16 +190,7 @@ class NoteController extends Controller
                     })->get();
                     
                     foreach ($tuteurs as $tuteur) {
-                        $tuteur->notify(new \App\Notifications\NoteAddedNotification($note, 'parent'));
-                    }
-
-                    // Notifier le Professeur Principal de la classe
-                    $profPrincipalId = \App\Models\Classe::find($request->classe_id)?->professeur_principal_id;
-                    if ($profPrincipalId) {
-                        $profToAlert = \App\Models\Professeur::find($profPrincipalId);
-                        if ($profToAlert) {
-                            $profToAlert->notify(new \App\Notifications\NoteAddedNotification($note, 'professeur'));
-                        }
+                        $tuteur->notify(new \App\Notifications\NoteAddedNotification($note));
                     }
 
                     // --- ALGORITHME D'ALERTE CHUTE DE NOTES ---

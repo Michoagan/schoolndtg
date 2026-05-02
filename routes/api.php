@@ -40,7 +40,10 @@ Route::get('/', function () {
 // Admin Auth (Users Table)
 Route::prefix('admin')->group(function () {
     Route::post('/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('throttle:5,1');
-    Route::post('/register', [\App\Http\Controllers\AdminAuthController::class, 'register']);
+
+    // SÉCURITÉ: Création de compte admin réservée aux directeurs authentifiés
+    Route::post('/register', [\App\Http\Controllers\AdminAuthController::class, 'register'])
+        ->middleware(['auth:sanctum', 'role:directeur']);
 
     Route::middleware('auth:sanctum')->post('/logout', [\App\Http\Controllers\AdminAuthController::class, 'logout']);
 });
@@ -48,7 +51,10 @@ Route::prefix('admin')->group(function () {
 // Direction Auth
 Route::prefix('direction')->group(function () {
     Route::post('/login', [DirectionController::class, 'login'])->middleware('throttle:5,1');
-    Route::post('/register', [DirectionController::class, 'register']);
+
+    // SÉCURITÉ: Création d'un membre de direction réservée aux directeurs authentifiés
+    Route::post('/register', [DirectionController::class, 'register'])
+        ->middleware(['auth:sanctum', 'role:directeur']);
 
     // Password Reset
     Route::post('/forgot-password', [DirectionController::class, 'sendResetCode'])->middleware('throttle:3,1');
@@ -71,7 +77,8 @@ use App\Http\Controllers\SecretaireEpreuveController;
 
 // Eleve Auth (Student Portal)
 Route::prefix('eleve')->group(function () {
-    Route::post('/register', [\App\Http\Controllers\EleveAuthController::class, 'register']);
+    // SÉCURITÉ: Rate limiting sur l'inscription des élèves
+    Route::post('/register', [\App\Http\Controllers\EleveAuthController::class, 'register'])->middleware('throttle:3,1');
     Route::post('/login', [\App\Http\Controllers\EleveAuthController::class, 'login'])->middleware('throttle:5,1');
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [\App\Http\Controllers\EleveAuthController::class, 'logout']);
@@ -95,7 +102,8 @@ Route::middleware('auth:sanctum')->group(function () {
 // Parent Auth
 Route::prefix('parent')->group(function () {
     Route::post('/login', [TuteurController::class, 'login'])->middleware('throttle:5,1');
-    Route::post('/register', [TuteurController::class, 'register']);
+    // SÉCURITÉ: Rate limiting sur l'inscription des parents
+    Route::post('/register', [TuteurController::class, 'register'])->middleware('throttle:3,1');
 
     // Password Reset (Public)
     Route::post('/forgot-password', [TuteurController::class, 'forgotPassword'])->middleware('throttle:3,1');
@@ -136,8 +144,6 @@ Route::middleware('auth:sanctum')->group(function () {
             // Les paiements et ventes ont été déplacés vers le prefix 'caisse'.
 
             // Salaires
-            Route::get('/salaires/config', [\App\Http\Controllers\ComptabiliteController::class, 'getConfiguration']);
-            Route::post('/salaires/config', [\App\Http\Controllers\ComptabiliteController::class, 'saveConfiguration']);
             Route::get('/salaires', [\App\Http\Controllers\ComptabiliteController::class, 'salaires']);
             Route::post('/salaires/generate', [\App\Http\Controllers\ComptabiliteController::class, 'generateSalaires']);
             Route::put('/salaires/{id}', [\App\Http\Controllers\ComptabiliteController::class, 'updateSalaire']);
@@ -148,6 +154,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/paie-professeurs/config', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'getConfiguration']);
             Route::post('/paie-professeurs/config', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'saveConfiguration']);
             Route::post('/paie-professeurs/generer', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'genererPaie']);
+            Route::post('/paie-professeurs/valider', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'validerPaies']);
 
             // Tranches de Scolarité
             Route::get('/tranches-scolarite', [\App\Http\Controllers\TrancheScolariteController::class, 'index']);
@@ -168,7 +175,6 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/dashboard', [\App\Http\Controllers\CaisseController::class, 'dashboard']);
 
             // Ventes (Autres Recettes)
-            Route::get('/ventes', [\App\Http\Controllers\CaisseController::class, 'indexVentes']);
             Route::post('/ventes', [\App\Http\Controllers\CaisseController::class, 'storeVente']);
             Route::get('/ventes/{vente}/receipt', [\App\Http\Controllers\CaisseController::class, 'downloadVenteReceipt']);
             Route::get('/ventes/{vente}/qrcode', [\App\Http\Controllers\CaisseController::class, 'getVenteQrCode']); // React Endpoint
@@ -180,26 +186,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/paiements/{paiement}/qrcode', [\App\Http\Controllers\CaisseController::class, 'getPaiementQrCode']); // React Endpoint
         });
 
-        // SURVEILLANT
-        Route::prefix('surveillant')->middleware('role:surveillant,directeur,censeur')->group(function () {
-            Route::get('/dashboard', [\App\Http\Controllers\SurveillantController::class, 'dashboard']);
-            Route::get('/stats', [\App\Http\Controllers\SurveillantController::class, 'stats']);
-            Route::get('/plaintes/recentes', [\App\Http\Controllers\SurveillantController::class, 'plaintesRecent']);
-            Route::get('/plaintes', [\App\Http\Controllers\SurveillantController::class, 'historiquePlaintes']);
-            Route::post('/plaintes', [\App\Http\Controllers\SurveillantController::class, 'storePlainte']);
-            
-            Route::get('/evenements', [\App\Http\Controllers\SurveillantController::class, 'evenements']);
-            Route::get('/evenements/prochains', [\App\Http\Controllers\SurveillantController::class, 'evenementsProchains']);
-            Route::post('/evenements', [\App\Http\Controllers\SurveillantController::class, 'storeEvenement']);
-            
-            Route::get('/presences/eleves', [\App\Http\Controllers\SurveillantController::class, 'getPresencesEleves']);
-            Route::get('/presences/professeurs', [\App\Http\Controllers\SurveillantController::class, 'getPresencesProfesseurs']);
-        });
-
         // Tableaux de bord (JSON expected from controllers)
         Route::get('/censeur', [DirectionController::class, 'censeurDashboard'])->middleware('role:censeur,directeur');
         Route::get('/directeur', [\App\Http\Controllers\DirecteurController::class, 'dashboard'])->middleware('role:directeur');
-        Route::get('/directeur/comptabilite-stats', [\App\Http\Controllers\DirecteurController::class, 'getComptabiliteStats'])->middleware('role:directeur');
 
         // Settings Update (Direction only)
         Route::post('/settings', [\App\Http\Controllers\SettingsController::class, 'update'])->middleware('role:directeur,admin');
@@ -215,7 +204,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/dashboard', [AdminDirectionController::class, 'dashboard']);
         Route::get('/pending-accounts', [AdminDirectionController::class, 'pendingAccounts']);
         Route::get('/all-accounts', [AdminDirectionController::class, 'allAccounts']);
-        Route::get('/logs', [AdminDirectionController::class, 'systemLogs']); // Added Global Audit Log
         Route::post('/users', [AdminDirectionController::class, 'store']); // Create User
         Route::post('/account/{id}/approve', [AdminDirectionController::class, 'approveAccount']);
         Route::post('/account/{id}/reject', [AdminDirectionController::class, 'rejectAccount']);
@@ -265,11 +253,6 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::get('/dashboard', [ProfesseurController::class, 'dashboard']);
                 Route::post('/logout', [ProfesseurController::class, 'logout']);
                 Route::get('/emploi-du-temps', [ProfesseurController::class, 'emploiDuTemps']);
-                
-                // Salaires
-                Route::get('/mes-salaires', [ProfesseurController::class, 'mesSalaires']);
-                Route::post('/mes-salaires/{id}/accuse', [ProfesseurController::class, 'accuseReceptionSalaire']);
-                Route::get('/mes-salaires/{id}/fiche', [ProfesseurController::class, 'downloadFichePaieProfesseur']);
             });
 
             Route::get('/presences/eleves/{classe}', [ProfesseurController::class, 'getElevesByClasse']);
@@ -281,12 +264,9 @@ Route::middleware('auth:sanctum')->group(function () {
             // Conduites
             Route::get('/classes/{classe}/conduites', [ConduiteController::class, 'index']);
             Route::post('/classes/{classe}/conduites', [ConduiteController::class, 'store']);
-            Route::post('/classes/{classe}/conduites/ia-assistant', [ConduiteController::class, 'genererAppreciationIa']);
 
-            // Performance & IA
+            // Performance
             Route::get('/{id}/performance', [\App\Http\Controllers\Api\PerformanceController::class, 'getPerformanceStats']);
-            Route::get('/global-performance', [\App\Http\Controllers\Api\PerformanceController::class, 'getGlobalPerformance']);
-            Route::get('/{id}/audit-ia', [\App\Http\Controllers\Api\PerformanceController::class, 'getPerformanceAuditIa']);
         });
     });
 
@@ -317,7 +297,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('censeur')->middleware('role:censeur,directeur')->group(function () {
         Route::get('/dashboard', [\App\Http\Controllers\CenseurController::class, 'dashboard']);
         Route::get('/logs', [\App\Http\Controllers\CenseurController::class, 'getLogs']);
-        Route::get('/suivi', [\App\Http\Controllers\CenseurController::class, 'suiviPedagogique']);
 
         // Timetable & Programmation
         Route::get('/emplois-du-temps/{classe_id}', [\App\Http\Controllers\CenseurController::class, 'getEmploiDuTemps']);
@@ -342,7 +321,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // ====================
     // SECRETAIRE (ELEVES)
     // ====================
-    Route::prefix('secretaire')->middleware('role:secretariat,directeur')->group(function () {
+    Route::prefix('secretaire')->middleware('role:secretariat,directeur,censeur')->group(function () {
         Route::get('/eleves', [EleveController::class, 'index']);
         Route::get('/eleves/en-attente', [EleveController::class, 'getElevesEnAttente']);
         Route::post('/eleves/affecter', [EleveController::class, 'affecterClasses']);

@@ -23,9 +23,12 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 
+# SÉCURITÉ: Fichiers de credentials sensibles
+firebase_credentials.json
+*.pem
+*.key
+secrets.json
+
 # WhatsApp Bot Session Cache
 whatsapp_bot/.wwebjs_auth/
 whatsapp_bot/node_modules/
-
-# Secrets and Credentials
-firebase_credentials.json

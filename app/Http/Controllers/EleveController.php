@@ -19,6 +19,10 @@ class EleveController extends Controller
 {
     // Récupérer les paramètres de recherche
     $search = $request->input('search');
+    // SÉCURITÉ [MED-1]: Échapper les caractères wildcard pour prévenir les attaques par amplification LIKE
+    if ($search) {
+        $search = str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $search);
+    }
     $classeId = $request->input('classe_id');
     $sexe = $request->input('sexe');
     $dateNaissance = $request->input('date_naissance');
@@ -180,8 +184,11 @@ class EleveController extends Controller
             $eleve = new Eleve($request->except('photo'));
             
             if ($request->hasFile('photo')) {
-                $path = $request->file('photo')->store('eleves/photos', 'public');
-                $eleve->photo = $path;
+                $firebaseStorage = new \App\Services\FirebaseStorageService();
+                $url = $firebaseStorage->uploadFile($request->file('photo'), 'eleves');
+                if ($url) {
+                    $eleve->photo = $url;
+                }
             }
 
             $eleve->save();
@@ -417,14 +424,20 @@ public function edit(Eleve $eleve)
             
             // Gérer la photo
             if ($request->hasFile('photo')) {
+                $firebaseStorage = new \App\Services\FirebaseStorageService();
+                
                 // Supprimer l'ancienne photo si elle existe
-                if ($oldPhoto && Storage::disk('public')->exists($oldPhoto)) {
-                    Storage::disk('public')->delete($oldPhoto);
+                if ($oldPhoto && strpos($oldPhoto, 'firebasestorage') !== false) {
+                    $firebaseStorage->deleteFile($oldPhoto);
+                } elseif ($oldPhoto && \Illuminate\Support\Facades\Storage::disk('public')->exists($oldPhoto)) {
+                    \Illuminate\Support\Facades\Storage::disk('public')->delete($oldPhoto);
                 }
                 
                 // Stocker la nouvelle photo
-                $path = $request->file('photo')->store('eleves/photos', 'public');
-                $eleve->photo = $path;
+                $url = $firebaseStorage->uploadFile($request->file('photo'), 'eleves');
+                if ($url) {
+                    $eleve->photo = $url;
+                }
             }
             
             $eleve->save();

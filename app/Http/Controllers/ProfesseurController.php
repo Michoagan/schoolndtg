@@ -10,10 +10,8 @@ use App\Models\Matiere;
 use App\Models\Note;
 use App\Models\PasswordResetCode;
 use App\Models\Professeur;
-use App\Models\Salaire;
 use App\Notifications\PasswordResetCodeNotification;
 use App\Notifications\ProfessorAccountCreatedNotification;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -43,12 +41,13 @@ class ProfesseurController extends Controller
         $personalCode = strtoupper(substr($validated['last_name'], 0, 5)).rand(1000, 9999);
 
         // Gérer l'upload de la photo
+        $photoName = null;
         if ($request->hasFile('photo')) {
-            $photo = $request->file('photo');
-            $photoName = 'prof_'.time().'_'.Str::slug($validated['last_name']).'.'.$photo->getClientOriginalExtension();
-
-            // Stocker l'image dans storage/app/public/professeurs
-            $photoPath = $photo->storeAs('professeurs', $photoName, 'public');
+            $firebaseStorage = new \App\Services\FirebaseStorageService();
+            $url = $firebaseStorage->uploadFile($request->file('photo'), 'professeurs');
+            if ($url) {
+                $photoName = $url;
+            }
         }
 
         // Créer le professeur
@@ -120,7 +119,12 @@ class ProfesseurController extends Controller
         try {
             // Supprimer la photo
             if ($professeur->photo) {
-                Storage::disk('public')->delete('professeurs/'.$professeur->photo);
+                if (strpos($professeur->photo, 'firebasestorage') !== false) {
+                    $firebaseStorage = new \App\Services\FirebaseStorageService();
+                    $firebaseStorage->deleteFile($professeur->photo);
+                } elseif (\Illuminate\Support\Facades\Storage::disk('public')->exists('professeurs/'.$professeur->photo)) {
+                    \Illuminate\Support\Facades\Storage::disk('public')->delete('professeurs/'.$professeur->photo);
+                }
             }
 
             $professeur->delete();
@@ -166,13 +170,19 @@ class ProfesseurController extends Controller
             if ($request->hasFile('photo')) {
                 // Delete old photo
                 if ($professeur->photo) {
-                    Storage::disk('public')->delete('professeurs/'.$professeur->photo);
+                    if (strpos($professeur->photo, 'firebasestorage') !== false) {
+                        $firebaseStorage = new \App\Services\FirebaseStorageService();
+                        $firebaseStorage->deleteFile($professeur->photo);
+                    } elseif (\Illuminate\Support\Facades\Storage::disk('public')->exists('professeurs/'.$professeur->photo)) {
+                        \Illuminate\Support\Facades\Storage::disk('public')->delete('professeurs/'.$professeur->photo);
+                    }
                 }
 
-                $photo = $request->file('photo');
-                $photoName = 'prof_'.time().'_'.Str::slug($request->last_name).'.'.$photo->getClientOriginalExtension();
-                $photoPath = $photo->storeAs('professeurs', $photoName, 'public');
-                $professeur->photo = $photoName;
+                $firebaseStorage = new \App\Services\FirebaseStorageService();
+                $url = $firebaseStorage->uploadFile($request->file('photo'), 'professeurs');
+                if ($url) {
+                    $professeur->photo = $url;
+                }
             }
 
             $professeur->update($request->except(['photo', 'personal_code']));
@@ -645,19 +655,14 @@ class ProfesseurController extends Controller
                     ->orderBy('prenom')
                     ->get();
                 
-                // Déduction de la matière : priorité à la requête
-                $matiere_selectionnee_id = $request->input('matiere_id');
-                
-                // Ignorer la chaîne "null" (flutter stringification) ou vide
-                if (empty($matiere_selectionnee_id) || $matiere_selectionnee_id === 'null') {
-                    $matiere_selectionnee_id = $professeur->classes()
-                        ->where('classe_id', $classe_selectionnee->id)
-                        ->first()
-                        ->pivot
-                        ->matiere_id ?? $professeur->matiere_id;
-                }
+                // Déduction stricte de la matière (cohérent avec getPresences)
+                $matiere_selectionnee_id = $professeur->classes()
+                    ->where('classe_id', $classe_selectionnee->id)
+                    ->first()
+                    ->pivot
+                    ->matiere_id ?? $professeur->matiere_id;
                     
-                if (!empty($matiere_selectionnee_id) && $matiere_selectionnee_id !== 'null') {
+                if ($matiere_selectionnee_id) {
                      $matiere_selectionnee = \App\Models\Matiere::find($matiere_selectionnee_id);
                 }
             }
@@ -667,7 +672,7 @@ class ProfesseurController extends Controller
         // 2. Si un élève est sélectionné -> Lancer l'analyse élève
         if ($classe_selectionnee && $matiere_selectionnee) {
             $type_analyse = $request->input('type', 'all');
-            if ($request->has('eleve_id') && $request->eleve_id && $request->eleve_id !== 'null') {
+            if ($request->has('eleve_id') && $request->eleve_id) {
                 // Analyse individuelle
                 $eleve_selectionne = Eleve::find($request->eleve_id);
                 if ($eleve_selectionne) {
@@ -699,36 +704,15 @@ class ProfesseurController extends Controller
             if ($eleve_selectionne) {
                 $query->where('eleve_id', $eleve_selectionne->id);
             }
-            
-            // Appliquer le filtre de type
-            $type_analyse = $request->input('type', 'all');
-            if ($type_analyse !== 'all' && $type_analyse !== 'generale' && $type_analyse !== 'trimestrielle') {
-                if ($type_analyse === 'interro') {
-                    $query->where('type_examen', 'LIKE', '%interro%');
-                } elseif ($type_analyse === 'devoir') {
-                    $query->where('type_examen', 'LIKE', '%devoir%');
-                } else {
-                    $query->where('type_examen', $type_analyse);
-                }
-            }
-
             $notes_examens = $query->with(['eleve', 'matiere'])->get()->map(function($n) {
                 return [
-                    'nom' => $n->eleve ? $n->eleve->nom : 'Inconnu',
-                    'prenom' => $n->eleve ? $n->eleve->prenom : '',
+                    'eleve_nom' => $n->eleve ? $n->eleve->nom_complet : 'Inconnu',
                     'matiere' => $n->matiere ? $n->matiere->nom : 'Inconnue',
                     'type_examen' => $n->type_examen,
                     'valeur' => $n->valeur,
                     'annee_scolaire' => $n->annee_scolaire
                 ];
-            })->groupBy('type_examen');
-            
-            // L'application Flutter s'attend à trouver 'notes_examens' DANS 'analyse_data'
-            if ($analyse_data !== null) {
-                if (is_array($analyse_data)) {
-                    $analyse_data['notes_examens'] = $notes_examens;
-                }
-            }
+            });
         }
 
         return response()->json([
@@ -863,16 +847,36 @@ class ProfesseurController extends Controller
             }
 
             // Générer les recommandations
-            // On reconstruit une structure compatible avec genererRecommandations ou on adapte
-            $dataForRecos = ['statistiques' => $stats]; 
-            $recommandations = $this->genererRecommandations($dataForRecos);
+            $aiService = app(\App\Services\AiService::class);
+            $matiereNom = \App\Models\Matiere::find($matiereId)->nom ?? 'Matière';
+            
+            $performances = [[
+                'matiere' => $matiereNom,
+                'moyenne_trimestrielle' => $stats['moyenne_generale'] ?? 0,
+            ]];
+            
+            $aiAdvice = $aiService->analyzeStudentGrades(
+                $stats['moyenne_generale'] ?? 0,
+                $performances,
+                0
+            );
             
             $conseils = [];
-            if (!empty($recommandations)) {
+            if (!empty($aiAdvice) && $aiAdvice !== "L'analyse pédagogique n'a pas pu être générée." && strpos($aiAdvice, "Conseil non disponible") === false) {
                 $conseils[] = [
-                    'type' => 'Performance & Conseils',
-                    'recommandations' => $recommandations
+                    'type' => 'Synthèse Pédagogique IA',
+                    'recommandations' => [$aiAdvice]
                 ];
+            } else {
+                $dataForRecos = ['statistiques' => $stats]; 
+                $recommandations = $this->genererRecommandations($dataForRecos);
+                
+                if (!empty($recommandations)) {
+                    $conseils[] = [
+                        'type' => 'Performance & Conseils',
+                        'recommandations' => $recommandations
+                    ];
+                }
             }
     
             return [
@@ -904,7 +908,7 @@ class ProfesseurController extends Controller
         
         try {
              // Récupérer les moyennes de classe par trimestre
-            $moyennes_classe = \App\Models\Note::where('classe_id', $classeId)
+            $moyennes_classe = Note::where('classe_id', $classeId)
                 ->where('matiere_id', $matiereId)
                 ->where('annee_scolaire', $anneeScolaire)
                 ->select('trimestre', DB::raw('AVG(moyenne_trimestrielle) as moyenne'))
@@ -924,11 +928,27 @@ class ProfesseurController extends Controller
                 $data_values[] = round($stat->moyenne, 2);
             }
 
-            $classeNom = \App\Models\Classe::find($classeId)->nom ?? 'Classe inconnue';
-            $matiereNom = \App\Models\Matiere::find($matiereId)->nom ?? 'Matière inconnue';
-
             $aiService = app(\App\Services\AiService::class);
-            $aiConseilText = $aiService->analyzeClassGrades($data_values, $matiereNom, $classeNom);
+            $matiereNom = \App\Models\Matiere::find($matiereId)->nom ?? 'Inconnue';
+            $classeNom = \App\Models\Classe::find($classeId)->nom ?? 'Inconnue';
+            
+            $aiAdvice = $aiService->analyzeClassGrades($data_values, $matiereNom, $classeNom);
+            
+            $conseils = [];
+            if (!empty($aiAdvice) && strpos($aiAdvice, 'indisponible') === false) {
+                $conseils[] = [
+                    'type' => 'Synthèse Pédagogique IA (Classe)',
+                    'recommandations' => [$aiAdvice]
+                ];
+            } else {
+                $conseils[] = [
+                    'type' => 'Vue d\'ensemble',
+                    'recommandations' => [
+                        'Ceci est une vue globale de la classe.',
+                        'Sélectionnez un élève pour voir ses performances détaillées et obtenir des conseils personnalisés.'
+                    ]
+                ];
+            }
 
             return [
                 'labels' => $labels,
@@ -939,19 +959,11 @@ class ProfesseurController extends Controller
                         'borderColor' => '#2196F3', // Blue
                     ]
                 ],
-                'conseils' => [
-                    [
-                        'type' => "Audit Pédagogique (IA Gemini)",
-                        'recommandations' => [
-                            $aiConseilText,
-                            'Sélectionnez un élève spécifique pour voir ses performances détaillées et obtenir des conseils individuels.'
-                        ]
-                    ]
-                ]
+                'conseils' => $conseils
             ];
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Erreur analyse notes classe: '.$e->getMessage());
+            Log::error('Erreur analyse notes classe: '.$e->getMessage());
             return null;
         }
     }
@@ -1581,33 +1593,21 @@ class ProfesseurController extends Controller
 
         $cahier->load(['classe', 'matiere']);
 
-        $tuteurs = collect();
-        $eleves = \App\Models\Eleve::where('classe_id', $cahier->classe_id)->with('tuteurs')->get();
-        
-        foreach ($eleves as $eleve) {
-            // Push tuteurs only if homework was given (to send the system notification)
-            if (!empty($cahier->travail_a_faire)) {
+        if (!empty($cahier->travail_a_faire)) {
+            $tuteurs = collect();
+            $eleves = \App\Models\Eleve::where('classe_id', $cahier->classe_id)->with('tuteurs')->get();
+            foreach ($eleves as $eleve) {
                 foreach ($eleve->tuteurs as $tuteur) {
                     $tuteurs->push($tuteur);
                 }
-            }
 
-            // --- WHATSAPP REPETITEUR ---
-            if (!empty($eleve->repetiteur_whatsapp)) {
-                $hasDevoir = !empty($cahier->travail_a_faire);
-                $texteWhatsapp = $hasDevoir ? "📚 *Résumé du Cours et Devoir*\n\n" : "🏫 *Résumé du Cours*\n\n";
-                $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
-                $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n";
-                $texteWhatsapp .= "Date : *" . \Carbon\Carbon::parse($cahier->date_cours)->format('d/m/Y') . "*\n\n";
-                $texteWhatsapp .= "Notion abordée : _{$cahier->notion_cours}_\n";
-                
-                if (!empty($cahier->contenu_cours)) {
-                    $texteWhatsapp .= "Contenu : *{$cahier->contenu_cours}*\n";
-                }
-                
-                if ($hasDevoir) {
-                    $texteWhatsapp .= "\nTravail à faire : _{$cahier->travail_a_faire}_";
-                }
+                // --- WHATSAPP REPETITEUR ---
+                if (!empty($eleve->repetiteur_whatsapp)) {
+                    $texteWhatsapp = "📚 *Nouveau Devoir à faire*\n\n";
+                    $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+                    $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n";
+                    $texteWhatsapp .= "Pour le : *" . \Carbon\Carbon::parse($cahier->date_cours)->format('d/m/Y') . "*\n\n";
+                    $texteWhatsapp .= "Travail à faire : _{$cahier->travail_a_faire}_";
 
                     try {
                         \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
@@ -1619,10 +1619,9 @@ class ProfesseurController extends Controller
                     }
                 }
             }
-            if (!empty($cahier->travail_a_faire) && $tuteurs->isNotEmpty()) {
-                $tuteurs = $tuteurs->unique('id');
-                \Illuminate\Support\Facades\Notification::send($tuteurs, new \App\Notifications\NouvelExerciceNotification($cahier));
-            }
+            $tuteurs = $tuteurs->unique('id');
+            \Illuminate\Support\Facades\Notification::send($tuteurs, new \App\Notifications\NouvelExerciceNotification($cahier));
+        }
 
         return response()->json([
             'success' => true,
@@ -1748,71 +1747,5 @@ class ProfesseurController extends Controller
                 'message' => 'Une erreur est survenue lors du chargement des classes.',
             ], 500);
         }
-    }
-
-    /**
-     * Récupérer les salaires du professeur connecté
-     */
-    public function mesSalaires()
-    {
-        $professeurId = Auth::id();
-        $salaires = Salaire::where('professeur_id', $professeurId)
-            ->orderBy('annee', 'desc')
-            ->orderBy('mois', 'desc')
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'salaires' => $salaires,
-        ]);
-    }
-
-    /**
-     * Accuser réception du salaire payé
-     */
-    public function accuseReceptionSalaire($id)
-    {
-        $salaire = Salaire::findOrFail($id);
-
-        if ($salaire->professeur_id !== Auth::id()) {
-            return response()->json(['success' => false, 'message' => 'Non autorisé'], 403);
-        }
-
-        if ($salaire->statut !== 'paye') {
-            return response()->json(['success' => false, 'message' => 'Salaire non encore payé'], 400);
-        }
-
-        $salaire->update([
-            'accuse_reception' => true,
-            'date_accuse' => now(),
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Réception confirmée avec succès.',
-            'salaire' => $salaire
-        ]);
-    }
-
-    /**
-     * Télécharger la fiche de paie en PDF
-     */
-    public function downloadFichePaieProfesseur($id)
-    {
-        $salaire = Salaire::with(['professeur', 'directionUser'])->findOrFail($id);
-
-        if ($salaire->professeur_id !== Auth::id()) {
-            abort(403, 'Non autorisé');
-        }
-
-        $pdf = Pdf::loadView('pdf.fiche_paie', [
-            'salaire' => $salaire
-        ]);
-        
-        $employe = $salaire->professeur;
-        $nom = $employe ? str_replace(' ', '_', $employe->last_name . '_' . $employe->first_name) : 'Anonyme';
-        $filename = "fiche_paie_{$salaire->mois}_{$salaire->annee}_{$nom}.pdf";
-
-        return $pdf->download($filename);
     }
 }
