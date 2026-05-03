@@ -243,7 +243,7 @@ class NoteController extends Controller
                     }
 
                     // --- ENVOI WHATSAPP AUTOMATIQUE (POUR TOUTE NOUVELLE NOTE OU CHUTE) ---
-                    if ($isNewOrUpdated && !empty($eleveAlerte->repetiteur_whatsapp)) {
+                    if ($isNewOrUpdated) {
                         $typeEval = $request->type_note === 'interro' ? 'Interrogation' : 'Devoir';
                         $messageType = "$typeEval $numero";
                         
@@ -259,13 +259,30 @@ class NoteController extends Controller
 
                         $texteWhatsapp .= "Connectez-vous à l'espace parent pour plus de détails.";
 
-                        try {
-                            \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
-                                'phone' => $eleveAlerte->repetiteur_whatsapp,
-                                'message' => $texteWhatsapp
-                            ]);
-                        } catch (\Exception $reqEx) {
-                            \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp : ' . $reqEx->getMessage());
+                        // Envoi au répétiteur
+                        if (!empty($eleveAlerte->repetiteur_whatsapp)) {
+                            try {
+                                \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                                    'phone' => $eleveAlerte->repetiteur_whatsapp,
+                                    'message' => $texteWhatsapp
+                                ]);
+                            } catch (\Exception $reqEx) {
+                                \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp (Repetiteur) : ' . $reqEx->getMessage());
+                            }
+                        }
+
+                        // Envoi aux parents (Tuteurs)
+                        foreach ($tuteurs as $tuteur) {
+                            if (!empty($tuteur->telephone)) {
+                                try {
+                                    \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                                        'phone' => $tuteur->telephone,
+                                        'message' => $texteWhatsapp
+                                    ]);
+                                } catch (\Exception $reqEx) {
+                                    \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp (Parent) : ' . $reqEx->getMessage());
+                                }
+                            }
                         }
                     }
                 }

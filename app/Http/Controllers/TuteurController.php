@@ -234,11 +234,23 @@ class TuteurController extends Controller
             ['code' => $code, 'created_at' => now()]
         );
 
-        // Envoyer l'email de réinitialisation
-        // Mail::to($request->email)->send(new ParentPasswordResetCode($code));
-        
-        // TEMPORAIRE: Log pour démo sans mailer configuré
-        \Illuminate\Support\Facades\Log::info("PARENT RESET CODE pour {$parent->email}: $code");
+        // Envoyer le code de réinitialisation par WhatsApp
+        if (!empty($parent->telephone)) {
+            $texteWhatsapp = "🔐 *Réinitialisation de Mot de passe*\n\n";
+            $texteWhatsapp .= "Votre code secret est : *$code*\n";
+            $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
+
+            try {
+                \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                    'phone' => $parent->telephone,
+                    'message' => $texteWhatsapp
+                ]);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Reset Code Tuteur) : ' . $e->getMessage());
+            }
+        } else {
+            \Illuminate\Support\Facades\Log::warning("PARENT RESET CODE pour {$parent->email}: $code (Numéro manquant)");
+        }
 
         return response()->json([
             'success' => true,

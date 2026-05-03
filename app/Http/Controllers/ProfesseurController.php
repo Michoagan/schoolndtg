@@ -307,13 +307,13 @@ class ProfesseurController extends Controller
                 \Illuminate\Support\Facades\Notification::send($tuteurs, new \App\Notifications\ExerciceNonFaitNotification($eleve));
             }
 
+            $texteWhatsapp = "⚠️ *Alerte Exercice Non Fait*\n\n";
+            $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+            $texteWhatsapp .= "Le professeur *{$professeur->nom} {$professeur->prenom}* signale que votre enfant n'a pas fait son exercice aujourd'hui.\n\n";
+            $texteWhatsapp .= "Merci de suivre cela de près.";
+
             // --- ENVOI WHATSAPP AUTOMATIQUE AU REPETITEUR ---
             if (!empty($eleve->repetiteur_whatsapp)) {
-                $texteWhatsapp = "⚠️ *Alerte Exercice Non Fait*\n\n";
-                $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
-                $texteWhatsapp .= "Le professeur *{$professeur->nom} {$professeur->prenom}* signale que votre enfant n'a pas fait son exercice aujourd'hui.\n\n";
-                $texteWhatsapp .= "Merci de suivre cela de près.";
-
                 try {
                     \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
                         'phone' => $eleve->repetiteur_whatsapp,
@@ -321,6 +321,20 @@ class ProfesseurController extends Controller
                     ]);
                 } catch (\Exception $reqEx) {
                     \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp : ' . $reqEx->getMessage());
+                }
+            }
+
+            // --- ENVOI WHATSAPP AUTOMATIQUE AUX PARENTS ---
+            foreach ($tuteurs as $tuteur) {
+                if (!empty($tuteur->telephone)) {
+                    try {
+                        \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                            'phone' => $tuteur->telephone,
+                            'message' => $texteWhatsapp
+                        ]);
+                    } catch (\Exception $reqEx) {
+                        \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp (Parent) : ' . $reqEx->getMessage());
+                    }
                 }
             }
 
@@ -848,28 +862,32 @@ class ProfesseurController extends Controller
                         $moyenneClasse = $avg ? round($avg, 2) : 0;
                     }
 
-                    // On ajoute le point si l'élève a une note OU si la classe a une moyenne (pour montrer les 'zéros' ou manques)
-                    // Mais pour ne pas surcharger, on peut filtrer : 
-                    // Afficher si valeurEleve existe OU (valeurEleve est null mais moyenneClasse > 0, ce qui implique un 0 ou une absence)
-                    // Pour l'instant, on affiche tout ce qui est pertinent.
-                    if ($valeurEleve !== null || $moyenneClasse > 0) {
+                    // On n'ajoute au graphique que les notes que l'élève a réellement composées
+                    if ($valeurEleve !== null) {
                         $labels[] = "T$trimestre $labelCourt";
-                        $val = $valeurEleve ?? 0; // Si null mais classe a une note, c'est 0 pour l'élève graphiquement
-                        $dataEleve[] = floatval($val); 
+                        $dataEleve[] = floatval($valeurEleve); 
                         $dataClasse[] = floatval($moyenneClasse);
-
-                        if ($valeurEleve !== null) {
-                            $statistiquesNotes[] = $valeurEleve;
-                        }
+                        $statistiquesNotes[] = $valeurEleve;
                     }
                 }
             }
+
+            // Calculer la vraie moyenne générale (basée sur les moyennes trimestrielles)
+            $moyennesTrimestrielles = [];
+            foreach ($notesEleve as $note) {
+                if ($note->moyenne_trimestrielle > 0) {
+                    $moyennesTrimestrielles[] = $note->moyenne_trimestrielle;
+                }
+            }
+            $vraiMoyenneGenerale = count($moyennesTrimestrielles) > 0 
+                ? round(array_sum($moyennesTrimestrielles) / count($moyennesTrimestrielles), 2) 
+                : (count($statistiquesNotes) > 0 ? round(array_sum($statistiquesNotes) / count($statistiquesNotes), 2) : 0);
 
             // Calculer les statistiques globales
             $stats = [];
             if (! empty($statistiquesNotes)) {
                 $stats = [
-                    'moyenne_generale' => round(array_sum($statistiquesNotes) / count($statistiquesNotes), 2),
+                    'moyenne_generale' => $vraiMoyenneGenerale,
                     'meilleure_note' => max($statistiquesNotes),
                     'pire_note' => min($statistiquesNotes),
                     'nombre_notes' => count($statistiquesNotes),
@@ -1280,20 +1298,37 @@ class ProfesseurController extends Controller
 
                 $isNewAbsent = $isAbsent && ($presence->wasRecentlyCreated || $presence->wasChanged('present'));
 
-                if ($isNewAbsent && !empty($eleve->repetiteur_whatsapp)) {
+                if ($isNewAbsent) {
                     $texteWhatsapp = "❌ *Alerte Absence*\n\n";
                     $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
                     $texteWhatsapp .= "Date : *" . \Carbon\Carbon::parse($request->date)->format('d/m/Y') . "*\n\n";
                     $texteWhatsapp .= "L'élève a été marqué absent en cours.\n";
                     $texteWhatsapp .= "Nous vous prions de vérifier s'il s'agit d'une raison justifiée ou non.";
 
-                    try {
-                        \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
-                            'phone' => $eleve->repetiteur_whatsapp,
-                            'message' => $texteWhatsapp
-                        ]);
-                    } catch (\Exception $reqEx) {
-                        \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Absence) : ' . $reqEx->getMessage());
+                    // Envoi au répétiteur
+                    if (!empty($eleve->repetiteur_whatsapp)) {
+                        try {
+                            \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                                'phone' => $eleve->repetiteur_whatsapp,
+                                'message' => $texteWhatsapp
+                            ]);
+                        } catch (\Exception $reqEx) {
+                            \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Absence Repetiteur) : ' . $reqEx->getMessage());
+                        }
+                    }
+
+                    // Envoi aux parents
+                    foreach ($eleve->tuteurs as $tuteur) {
+                        if (!empty($tuteur->telephone)) {
+                            try {
+                                \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                                    'phone' => $tuteur->telephone,
+                                    'message' => $texteWhatsapp
+                                ]);
+                            } catch (\Exception $reqEx) {
+                                \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Absence Parent) : ' . $reqEx->getMessage());
+                            }
+                        }
                     }
                 }
             }
@@ -1358,7 +1393,23 @@ class ProfesseurController extends Controller
 
         try {
             // Envoyer la notification avec le code
-            $user->notify(new PasswordResetCodeNotification($code));
+            // Envoyer le code de réinitialisation par WhatsApp
+            if (!empty($user->phone)) {
+                $texteWhatsapp = "🔐 *Réinitialisation de Mot de passe*\n\n";
+                $texteWhatsapp .= "Votre code secret est : *$code*\n";
+                $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
+
+                try {
+                    \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                        'phone' => $user->phone,
+                        'message' => $texteWhatsapp
+                    ]);
+                } catch (\Exception $reqEx) {
+                    \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Reset Code Prof) : ' . $reqEx->getMessage());
+                }
+            } else {
+                \Illuminate\Support\Facades\Log::warning("PROF RESET CODE pour {$user->email}: $code (Numéro manquant)");
+            }
 
             return response()->json([
                 'success' => true,
@@ -1532,8 +1583,23 @@ class ProfesseurController extends Controller
         ]);
 
         try {
-            // Envoyer la notification
-            $user->notify(new PasswordResetCodeNotification($code));
+            // Envoyer le code de réinitialisation par WhatsApp
+            if (!empty($user->phone)) {
+                $texteWhatsapp = "🔐 *Réinitialisation de Mot de passe*\n\n";
+                $texteWhatsapp .= "Votre code secret est : *$code*\n";
+                $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
+
+                try {
+                    \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                        'phone' => $user->phone,
+                        'message' => $texteWhatsapp
+                    ]);
+                } catch (\Exception $reqEx) {
+                    \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Reset Code Prof) : ' . $reqEx->getMessage());
+                }
+            } else {
+                \Illuminate\Support\Facades\Log::warning("PROF RESET CODE pour {$user->email}: $code (Numéro manquant)");
+            }
 
             return response()->json([
                 'success' => true,
@@ -1641,21 +1707,35 @@ class ProfesseurController extends Controller
                     $tuteurs->push($tuteur);
                 }
 
+                $texteWhatsapp = "📚 *Nouveau Devoir à faire*\n\n";
+                $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+                $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n";
+                $texteWhatsapp .= "Pour le : *" . \Carbon\Carbon::parse($cahier->date_cours)->format('d/m/Y') . "*\n\n";
+                $texteWhatsapp .= "Travail à faire : _{$cahier->travail_a_faire}_";
+
                 // --- WHATSAPP REPETITEUR ---
                 if (!empty($eleve->repetiteur_whatsapp)) {
-                    $texteWhatsapp = "📚 *Nouveau Devoir à faire*\n\n";
-                    $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
-                    $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n";
-                    $texteWhatsapp .= "Pour le : *" . \Carbon\Carbon::parse($cahier->date_cours)->format('d/m/Y') . "*\n\n";
-                    $texteWhatsapp .= "Travail à faire : _{$cahier->travail_a_faire}_";
-
                     try {
                         \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
                             'phone' => $eleve->repetiteur_whatsapp,
                             'message' => $texteWhatsapp
                         ]);
                     } catch (\Exception $reqEx) {
-                        \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp : ' . $reqEx->getMessage());
+                        \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp (Repetiteur) : ' . $reqEx->getMessage());
+                    }
+                }
+
+                // --- WHATSAPP PARENTS ---
+                foreach ($eleve->tuteurs as $tuteur) {
+                    if (!empty($tuteur->telephone)) {
+                        try {
+                            \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                                'phone' => $tuteur->telephone,
+                                'message' => $texteWhatsapp
+                            ]);
+                        } catch (\Exception $reqEx) {
+                            \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp (Parent) : ' . $reqEx->getMessage());
+                        }
                     }
                 }
             }
@@ -1708,20 +1788,34 @@ class ProfesseurController extends Controller
                 $tuteur->notify(new \App\Notifications\ExerciceNonFaitNotification($eleve, $cahier));
             }
 
+            $texteWhatsapp = "⚠️ *Alerte Exercice Non Fait*\n\n";
+            $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+            $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n\n";
+            $texteWhatsapp .= "L'élève n'a pas fait l'exercice demandé : _{$cahier->travail_a_faire}_. Merci de veiller à ce que cela soit fait.";
+
             // --- WHATSAPP REPETITEUR ---
             if (!empty($eleve->repetiteur_whatsapp)) {
-                $texteWhatsapp = "⚠️ *Alerte Exercice Non Fait*\n\n";
-                $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
-                $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n\n";
-                $texteWhatsapp .= "L'élève n'a pas fait l'exercice demandé : _{$cahier->travail_a_faire}_. Merci de veiller à ce que cela soit fait.";
-
                 try {
                     \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
                         'phone' => $eleve->repetiteur_whatsapp,
                         'message' => $texteWhatsapp
                     ]);
                 } catch (\Exception $reqEx) {
-                    \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp : ' . $reqEx->getMessage());
+                    \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp (Repetiteur) : ' . $reqEx->getMessage());
+                }
+            }
+
+            // --- WHATSAPP PARENTS ---
+            foreach ($eleve->tuteurs as $tuteur) {
+                if (!empty($tuteur->telephone)) {
+                    try {
+                        \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                            'phone' => $tuteur->telephone,
+                            'message' => $texteWhatsapp
+                        ]);
+                    } catch (\Exception $reqEx) {
+                        \Illuminate\Support\Facades\Log::error('Erreur HTTP vers Bot WhatsApp (Parent) : ' . $reqEx->getMessage());
+                    }
                 }
             }
         }

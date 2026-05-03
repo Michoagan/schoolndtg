@@ -163,7 +163,23 @@ class DirectionController extends Controller
 
         try {
             // Envoyer la notification avec le code
-            $user->notify(new PasswordResetCodeNotification($code));
+            // Envoyer le code de réinitialisation par WhatsApp
+            if (!empty($user->phone)) {
+                $texteWhatsapp = "🔐 *Réinitialisation de Mot de passe*\n\n";
+                $texteWhatsapp .= "Votre code secret est : *$code*\n";
+                $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
+
+                try {
+                    \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                        'phone' => $user->phone,
+                        'message' => $texteWhatsapp
+                    ]);
+                } catch (\Exception $reqEx) {
+                    \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Reset Code Direction) : ' . $reqEx->getMessage());
+                }
+            } else {
+                \Illuminate\Support\Facades\Log::warning("DIRECTION RESET CODE pour {$user->email}: $code (Numéro manquant)");
+            }
 
             return response()->json([
                 'success' => true,
@@ -291,8 +307,23 @@ class DirectionController extends Controller
         ]);
 
         try {
-            // Envoyer la notification
-            $user->notify(new PasswordResetCodeNotification($code));
+            // Envoyer le code de réinitialisation par WhatsApp
+            if (!empty($user->phone)) {
+                $texteWhatsapp = "🔐 *Réinitialisation de Mot de passe*\n\n";
+                $texteWhatsapp .= "Votre code secret est : *$code*\n";
+                $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
+
+                try {
+                    \Illuminate\Support\Facades\Http::timeout(3)->post(env('WHATSAPP_BOT_URL', 'http://localhost:3000') . '/send', [
+                        'phone' => $user->phone,
+                        'message' => $texteWhatsapp
+                    ]);
+                } catch (\Exception $reqEx) {
+                    \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Reset Code Direction) : ' . $reqEx->getMessage());
+                }
+            } else {
+                \Illuminate\Support\Facades\Log::warning("DIRECTION RESET CODE pour {$user->email}: $code (Numéro manquant)");
+            }
 
             return response()->json([
                 'success' => true,
