@@ -25,6 +25,7 @@ class Classe extends Model
         'professeur_principal_id',
         'cout_contribution',
         'capacite_max',
+        'taux_horaire',
         'is_active',
     ];
 

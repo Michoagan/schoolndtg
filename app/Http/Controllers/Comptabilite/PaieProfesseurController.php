@@ -6,49 +6,112 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Professeur;
 use App\Models\Classe;
-use App\Models\TauxHoraire;
+use App\Models\Direction;
+use App\Models\PrimeMensuelle;
 use App\Models\CahierTexte;
 use App\Models\PaiementProfesseur;
 use Illuminate\Support\Facades\DB;
 
 class PaieProfesseurController extends Controller
 {
-    // Récupérer la matrice de configuration pour un prof
+    // Récupérer les paramètres fixes (Taux Horaires Classes, Salaire Base Personnel)
     public function getConfiguration(Request $request)
     {
-        $professeurs = Professeur::with(['classes', 'tauxHoraires'])->get();
+        $classes = Classe::select('id', 'nom', 'niveau', 'taux_horaire', 'professeur_principal_id')
+            ->with('professeurPrincipal:id,last_name,first_name')
+            ->get();
+            
+        $professeurs = Professeur::select('id', 'last_name', 'first_name', 'phone')->get();
+        
+        $personnel = Direction::select('id', 'last_name', 'first_name', 'role', 'salaire_base')
+            ->where('is_active', true)
+            ->get();
+
         return response()->json([
             'success' => true,
-            'professeurs' => $professeurs
+            'classes' => $classes,
+            'professeurs' => $professeurs,
+            'personnel' => $personnel,
         ]);
     }
 
-    // Sauvegarder la configuration de paie d'un professeur
+    // Sauvegarder les paramètres fixes
     public function saveConfiguration(Request $request)
     {
         $request->validate([
-            'professeur_id' => 'required|exists:professeurs,id',
-            'taux' => 'required|array', // Structure: [['classe_id' => X, 'taux_horaire' => Y, 'prime_mensuelle' => Z], ...]
+            'classes' => 'nullable|array',
+            'personnel' => 'nullable|array'
         ]);
 
         DB::beginTransaction();
         try {
-            $profId = $request->professeur_id;
-            
-            // Effacer les anciens taux pour les recréer proprement
-            TauxHoraire::where('professeur_id', $profId)->delete();
-            
-            foreach($request->taux as $t) {
-                TauxHoraire::create([
-                    'professeur_id'   => $profId,
-                    'classe_id'       => $t['classe_id'] ?? null, // Si null, c'est une prime globale ou un taux par défaut
-                    'taux_horaire'    => $t['taux_horaire'] ?? 0,
-                    'prime_mensuelle' => $t['prime_mensuelle'] ?? 0,
-                ]);
+            if ($request->has('classes')) {
+                foreach($request->classes as $c) {
+                    Classe::where('id', $c['id'])->update(['taux_horaire' => $c['taux_horaire']]);
+                }
+            }
+
+            if ($request->has('personnel')) {
+                foreach($request->personnel as $p) {
+                    Direction::where('id', $p['id'])->update(['salaire_base' => $p['salaire_base']]);
+                }
             }
             
             DB::commit();
             return response()->json(['success' => true, 'message' => 'Configuration sauvegardée.']);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Erreur: '.$e->getMessage()], 500);
+        }
+    }
+
+    // Récupérer les primes du mois
+    public function getPrimesMensuelles(Request $request)
+    {
+        $request->validate([
+            'mois' => 'required|integer|min:1|max:12',
+            'annee' => 'required|integer',
+        ]);
+
+        $primes = PrimeMensuelle::where('mois', $request->mois)
+            ->where('annee', $request->annee)
+            ->with(['professeur:id,last_name,first_name', 'directionUser:id,last_name,first_name,role'])
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'primes' => $primes
+        ]);
+    }
+
+    // Sauvegarder les primes d'un mois
+    public function savePrimesMensuelles(Request $request)
+    {
+        $request->validate([
+            'mois' => 'required|integer|min:1|max:12',
+            'annee' => 'required|integer',
+            'primes' => 'required|array',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            // Effacer les primes existantes pour ce mois pour tout recréer
+            PrimeMensuelle::where('mois', $request->mois)->where('annee', $request->annee)->delete();
+
+            foreach($request->primes as $p) {
+                PrimeMensuelle::create([
+                    'mois' => $request->mois,
+                    'annee' => $request->annee,
+                    'professeur_id' => $p['professeur_id'] ?? null,
+                    'direction_user_id' => $p['direction_user_id'] ?? null,
+                    'type_prime' => $p['type_prime'],
+                    'montant' => $p['montant'],
+                    'motif' => $p['motif'] ?? null
+                ]);
+            }
+
+            DB::commit();
+            return response()->json(['success' => true, 'message' => 'Primes enregistrées.']);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['success' => false, 'message' => 'Erreur: '.$e->getMessage()], 500);
@@ -74,51 +137,51 @@ class PaieProfesseurController extends Controller
         }
 
         $professeurs = $query->get();
+        $classes = Classe::all()->keyBy('id'); // Pour un accès rapide aux taux horaires
         $resultats = [];
 
         foreach ($professeurs as $prof) {
-            // 1. Récupérer toutes les heures de cours VALIDÉES/EFFECTUÉES ce mois-ci
-            // On se base sur le Cahier de Texte
             $heuresEffectuees = CahierTexte::where('professeur_id', $prof->id)
                 ->whereMonth('date_cours', $mois)
                 ->whereYear('date_cours', $annee)
-                // ->whereNull('paiement_id') // On peut filtrer si on ne veut pas payer deux fois
                 ->get();
 
             $totalHeuresVol = 0;
             $montantHeures = 0;
             $montantPrimes = 0;
             
-            // Grouper par classe pour appliquer le bon taux horaire
             $heuresParClasse = $heuresEffectuees->groupBy('classe_id');
+            $details_heures = [];
             
-            $tauxConfigures = TauxHoraire::where('professeur_id', $prof->id)->get();
+            // Primes mensuelles du professeur
+            $primes = PrimeMensuelle::where('professeur_id', $prof->id)
+                ->where('mois', $mois)
+                ->where('annee', $annee)
+                ->get();
 
-            // S'il n'y a pas d'heures effectuées, on skip sauf si prime fixe importante
-            if ($heuresEffectuees->isEmpty() && $tauxConfigures->isEmpty()) {
+            if ($heuresEffectuees->isEmpty() && $primes->isEmpty()) {
                 continue; 
             }
 
             foreach($heuresParClasse as $classeId => $coursList) {
                 $heures = $coursList->sum('duree_cours');
                 $totalHeuresVol += $heures;
-
-                // Chercher le taux spécifique pour cette classe et ce prof
-                $tauxSpecifique = $tauxConfigures->firstWhere('classe_id', $classeId);
+                $classe = isset($classes[$classeId]) ? $classes[$classeId] : null;
+                $tauxApplique = $classe ? $classe->taux_horaire : 0;
+                $nomClasse = $classe ? $classe->nom : 'Inconnue';
+                $montant = ($heures * $tauxApplique);
+                $montantHeures += $montant;
                 
-                // Sinon chercher le taux global (classe_id null)
-                $tauxGlobal = $tauxConfigures->firstWhere('classe_id', null);
-
-                $tauxApplique = $tauxSpecifique ? $tauxSpecifique->taux_horaire : ($tauxGlobal ? $tauxGlobal->taux_horaire : 0);
-                
-                $montantHeures += ($heures * $tauxApplique);
+                $details_heures[] = [
+                    'classe' => $nomClasse,
+                    'heures' => $heures,
+                    'taux' => $tauxApplique,
+                    'montant' => $montant
+                ];
             }
 
-            // 2. Additionner toutes les primes (Prime globale + prime par classe)
-            foreach($tauxConfigures as $tc) {
-                // Si la prime est liée à une classe, vérifier qu'il a bien enseigné dans cette classe ce mois-ci ?
-                // Selon la règle utilisateur, on l'ajoute s'il a cette attribution.
-                $montantPrimes += $tc->prime_mensuelle;
+            foreach($primes as $prime) {
+                $montantPrimes += $prime->montant;
             }
 
             $montantTotal = $montantHeures + $montantPrimes;
@@ -129,7 +192,8 @@ class PaieProfesseurController extends Controller
                 'montant_heures' => $montantHeures,
                 'montant_primes' => $montantPrimes,
                 'montant_total'  => $montantTotal,
-                'details_heures' => $heuresParClasse->map(function($cours) { return $cours->sum('duree_cours'); })
+                'details_heures' => $details_heures,
+                'primes_list' => $primes
             ];
         }
 
@@ -154,16 +218,15 @@ class PaieProfesseurController extends Controller
 
         DB::beginTransaction();
         try {
-            // On réutilise la logique de génération pour avoir les montants exacts
             $professeurs = Professeur::all();
+            $classes = Classe::all()->keyBy('id');
             $paiesEnvoyees = 0;
 
             foreach ($professeurs as $prof) {
-                // Heures non encore payées pour ce mois
                 $heuresEffectuees = CahierTexte::where('professeur_id', $prof->id)
                     ->whereMonth('date_cours', $mois)
                     ->whereYear('date_cours', $annee)
-                    ->whereNull('paiement_id') // Seulement celles non payées !
+                    ->whereNull('paiement_id')
                     ->get();
 
                 $totalHeuresVol = 0;
@@ -171,31 +234,30 @@ class PaieProfesseurController extends Controller
                 $montantPrimes = 0;
                 
                 $heuresParClasse = $heuresEffectuees->groupBy('classe_id');
-                $tauxConfigures = TauxHoraire::where('professeur_id', $prof->id)->get();
+                
+                $primes = PrimeMensuelle::where('professeur_id', $prof->id)
+                    ->where('mois', $mois)
+                    ->where('annee', $annee)
+                    ->get();
 
-                if ($heuresEffectuees->isEmpty() && $tauxConfigures->isEmpty()) {
+                if ($heuresEffectuees->isEmpty() && $primes->isEmpty()) {
                     continue; 
                 }
 
                 foreach($heuresParClasse as $classeId => $coursList) {
                     $heures = $coursList->sum('duree_cours');
                     $totalHeuresVol += $heures;
-
-                    $tauxSpecifique = $tauxConfigures->firstWhere('classe_id', $classeId);
-                    $tauxGlobal = $tauxConfigures->firstWhere('classe_id', null);
-                    $tauxApplique = $tauxSpecifique ? $tauxSpecifique->taux_horaire : ($tauxGlobal ? $tauxGlobal->taux_horaire : 0);
-                    
+                    $tauxApplique = isset($classes[$classeId]) ? $classes[$classeId]->taux_horaire : 0;
                     $montantHeures += ($heures * $tauxApplique);
                 }
 
-                foreach($tauxConfigures as $tc) {
-                    $montantPrimes += $tc->prime_mensuelle;
+                foreach($primes as $prime) {
+                    $montantPrimes += $prime->montant;
                 }
 
                 $montantTotal = $montantHeures + $montantPrimes;
 
                 if ($montantTotal > 0 || $totalHeuresVol > 0) {
-                    // Créer l'enregistrement de paiement
                     $paiement = PaiementProfesseur::updateOrCreate(
                         ['professeur_id' => $prof->id, 'mois' => $mois, 'annee' => $annee],
                         [
@@ -203,12 +265,11 @@ class PaieProfesseurController extends Controller
                             'montant_heures' => $montantHeures,
                             'montant_primes' => $montantPrimes,
                             'montant_total' => $montantTotal,
-                            'statut' => 'paye', // ou 'en_attente' selon le workflow. "paye" affichera "Payé" sur le mobile
+                            'statut' => 'paye',
                             'date_paiement' => now()
                         ]
                     );
 
-                    // Lier les heures du cahier de texte à ce paiement
                     CahierTexte::whereIn('id', $heuresEffectuees->pluck('id'))->update([
                         'paiement_id' => $paiement->id
                     ]);
@@ -227,5 +288,37 @@ class PaieProfesseurController extends Controller
             return response()->json(['success' => false, 'message' => 'Erreur de validation: '.$e->getMessage()], 500);
         }
     }
-}
 
+    // Télécharger la fiche de paie d'un professeur
+    public function downloadFichePaie($id)
+    {
+        $paiement = PaiementProfesseur::with('professeur')->findOrFail($id);
+
+        // On crée un objet similaire au modèle Salaire pour réutiliser la vue PDF existante
+        $salaire = (object) [
+            'annee' => $paiement->annee,
+            'mois' => $paiement->mois,
+            'professeur_id' => $paiement->professeur_id,
+            'direction_user_id' => null,
+            'directionUser' => null,
+            'professeur' => $paiement->professeur,
+            'statut' => $paiement->statut,
+            'date_paiement' => $paiement->date_paiement,
+            'taux_horaire' => $paiement->total_heures > 0 ? round($paiement->montant_heures / $paiement->total_heures) : 0,
+            'montant_base' => $paiement->montant_heures,
+            'heures_travaillees' => $paiement->total_heures,
+            'primes' => $paiement->montant_primes,
+            'retenues' => 0,
+            'net_a_payer' => $paiement->montant_total
+        ];
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.fiche_paie', [
+            'salaire' => $salaire
+        ]);
+        
+        $nom = $paiement->professeur ? str_replace(' ', '_', $paiement->professeur->last_name . '_' . $paiement->professeur->first_name) : 'Anonyme';
+        $filename = "fiche_paie_professeur_{$paiement->mois}_{$paiement->annee}_{$nom}.pdf";
+
+        return $pdf->download($filename);
+    }
+}

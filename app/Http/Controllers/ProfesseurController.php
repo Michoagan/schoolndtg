@@ -597,6 +597,46 @@ class ProfesseurController extends Controller
         }
     }
 
+    public function downloadFichePaie($id)
+    {
+        $professeur = Auth::user();
+
+        if (! $professeur instanceof Professeur) {
+            return response()->json(['error' => 'Non autorisé'], 403);
+        }
+
+        $paiement = \App\Models\PaiementProfesseur::with('professeur')
+            ->where('professeur_id', $professeur->id)
+            ->findOrFail($id);
+
+        $salaire = (object) [
+            'annee' => $paiement->annee,
+            'mois' => $paiement->mois,
+            'professeur_id' => $paiement->professeur_id,
+            'direction_user_id' => null,
+            'directionUser' => null,
+            'professeur' => $paiement->professeur,
+            'statut' => $paiement->statut,
+            'date_paiement' => $paiement->date_paiement,
+            // For the frontend PDF we calculate the average rate if needed
+            'taux_horaire' => $paiement->total_heures > 0 ? round($paiement->montant_heures / $paiement->total_heures) : 0,
+            'montant_base' => $paiement->montant_heures,
+            'heures_travaillees' => $paiement->total_heures,
+            'primes' => $paiement->montant_primes,
+            'retenues' => 0,
+            'net_a_payer' => $paiement->montant_total
+        ];
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.fiche_paie', [
+            'salaire' => $salaire
+        ]);
+        
+        $nom = $paiement->professeur ? str_replace(' ', '_', $paiement->professeur->last_name . '_' . $paiement->professeur->first_name) : 'Anonyme';
+        $filename = "fiche_paie_{$paiement->mois}_{$paiement->annee}_{$nom}.pdf";
+
+        return $pdf->download($filename);
+    }
+
     public function matieresParClasse($classeId)
     {
         $professeur = Auth::user();

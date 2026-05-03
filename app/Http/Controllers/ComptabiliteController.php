@@ -390,34 +390,7 @@ class ComptabiliteController extends Controller
 
         $generated = 0;
 
-        // 1. Générer pour les Professeurs
-        $professeurs = \App\Models\Professeur::all();
-        foreach ($professeurs as $prof) {
-            $exists = \App\Models\Salaire::where('professeur_id', $prof->id)
-                ->where('mois', $mois)
-                ->where('annee', $annee)
-                ->exists();
-
-            if ($exists) continue;
-
-            $heures = 120; // Example static 120 hours
-            $taux = $prof->taux_horaire ?? 5000;
-            $base = $heures * $taux;
-
-            \App\Models\Salaire::create([
-                'professeur_id' => $prof->id,
-                'mois' => $mois,
-                'annee' => $annee,
-                'heures_travaillees' => $heures,
-                'taux_horaire' => $taux,
-                'montant_base' => $base,
-                'primes' => 0,
-                'retenues' => 0,
-                'net_a_payer' => $base,
-                'statut' => 'en_attente'
-            ]);
-            $generated++;
-        }
+        // 1. (Désactivé) Générer pour les Professeurs - Géré par PaieProfesseurController désormais
 
         // 2. Générer pour le Personnel de Direction et Agents
         $personnel = \App\Models\Direction::where('is_active', true)->get();
@@ -430,6 +403,11 @@ class ComptabiliteController extends Controller
             if ($exists) continue;
 
             $base = $agent->salaire_base ?? 0;
+            
+            $primesMensuelles = \App\Models\PrimeMensuelle::where('direction_user_id', $agent->id)
+                ->where('mois', $mois)
+                ->where('annee', $annee)
+                ->sum('montant');
 
             \App\Models\Salaire::create([
                 'direction_user_id' => $agent->id,
@@ -438,9 +416,9 @@ class ComptabiliteController extends Controller
                 'heures_travaillees' => 0, 
                 'taux_horaire' => 0,
                 'montant_base' => $base,
-                'primes' => 0,
+                'primes' => $primesMensuelles,
                 'retenues' => 0,
-                'net_a_payer' => $base,
+                'net_a_payer' => $base + $primesMensuelles,
                 'statut' => 'en_attente' // L'édition des primes se fera avant paiement
             ]);
             $generated++;

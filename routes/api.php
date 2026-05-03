@@ -94,6 +94,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('professeur')->middleware('role:professeur')->group(function () {
         Route::post('/change-code', [ProfesseurController::class, 'changeCode']);
         Route::get('/mes-paiements', [ProfesseurController::class, 'mesPaiements']);
+        Route::get('/mes-paiements/{id}/fiche', [ProfesseurController::class, 'downloadFichePaie']);
         Route::post('/fcm-token', [ProfesseurController::class, 'updateFcmToken']);
         Route::post('/exercice-non-fait', [ProfesseurController::class, 'signalerExerciceNonFait']);
     });
@@ -153,8 +154,11 @@ Route::middleware('auth:sanctum')->group(function () {
             // Paie Professeurs (Nouveau module basé sur Cahier de Texte)
             Route::get('/paie-professeurs/config', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'getConfiguration']);
             Route::post('/paie-professeurs/config', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'saveConfiguration']);
+            Route::get('/paie-professeurs/primes', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'getPrimesMensuelles']);
+            Route::post('/paie-professeurs/primes', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'savePrimesMensuelles']);
             Route::post('/paie-professeurs/generer', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'genererPaie']);
             Route::post('/paie-professeurs/valider', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'validerPaies']);
+            Route::get('/paie-professeurs/fiche/{id}', [\App\Http\Controllers\Comptabilite\PaieProfesseurController::class, 'downloadFichePaie']);
 
             // Tranches de Scolarité
             Route::get('/tranches-scolarite', [\App\Http\Controllers\TrancheScolariteController::class, 'index']);
