@@ -76,12 +76,12 @@ class ProfesseurController extends Controller
 
         // --- ENVOI WHATSAPP AUTOMATIQUE AU PROFESSEUR ---
         if (!empty($professeur->phone)) {
-            $texteWhatsapp = "ðŸ‘‹ *Bienvenue Ã  NDTG, Professeur {$professeur->first_name} {$professeur->last_name} !*\n\n";
-            $texteWhatsapp .= "Votre compte a Ã©tÃ© crÃ©Ã© avec succÃ¨s.\n";
-            $texteWhatsapp .= "ðŸ”‘ *Vos identifiants :*\n";
+            $texteWhatsapp = "Bienvenue À NDTG, Professeur {$professeur->first_name} {$professeur->last_name} !\n\n";
+            $texteWhatsapp .= "Votre compte a été créé avec succès.\n";
+            $texteWhatsapp .= "Vos identifiants :\n";
             $texteWhatsapp .= "- Email : {$professeur->email}\n";
-            $texteWhatsapp .= "- Code personnel : *{$personalCode}*\n\n";
-            $texteWhatsapp .= "Veuillez conserver ce code prÃ©cieusement. Il vous servira pour vous connecter Ã  l'application.";
+            $texteWhatsapp .= "- Code personnel : {$personalCode}\n\n";
+            $texteWhatsapp .= "Veuillez conserver ce code précieusement. Il vous servira pour vous connecter à l'application.";
 
             try {
                 \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
@@ -330,10 +330,10 @@ class ProfesseurController extends Controller
                 \Illuminate\Support\Facades\Notification::send($tuteurs, new \App\Notifications\ExerciceNonFaitNotification($eleve));
             }
 
-            $texteWhatsapp = "âš ï¸ *Alerte Exercice Non Fait*\n\n";
-            $texteWhatsapp .= "Ã‰lÃ¨ve : *{$eleve->nom_complet}*\n";
-            $texteWhatsapp .= "Le professeur *{$professeur->nom} {$professeur->prenom}* signale que votre enfant n'a pas fait son exercice aujourd'hui.\n\n";
-            $texteWhatsapp .= "Merci de suivre cela de prÃ¨s.";
+            $texteWhatsapp = "Alerte Exercice Non Fait\n\n";
+            $texteWhatsapp .= "Élève : {$eleve->nom_complet}\n";
+            $texteWhatsapp .= "Le professeur {$professeur->nom} {$professeur->prenom} signale que votre enfant n'a pas fait son exercice aujourd'hui.\n\n";
+            $texteWhatsapp .= "Merci de suivre cela de près.";
 
             // --- ENVOI WHATSAPP AUTOMATIQUE AU REPETITEUR ---
             if (!empty($eleve->repetiteur_whatsapp)) {
@@ -1331,11 +1331,11 @@ class ProfesseurController extends Controller
                 $isNewAbsent = $isAbsent && ($presence->wasRecentlyCreated || $presence->wasChanged('present'));
 
                 if ($isNewAbsent) {
-                    $texteWhatsapp = "âŒ *Alerte Absence*\n\n";
-                    $texteWhatsapp .= "Ã‰lÃ¨ve : *{$eleve->nom_complet}*\n";
-                    $texteWhatsapp .= "Date : *" . \Carbon\Carbon::parse($request->date)->format('d/m/Y') . "*\n\n";
-                    $texteWhatsapp .= "L'Ã©lÃ¨ve a Ã©tÃ© marquÃ© absent en cours.\n";
-                    $texteWhatsapp .= "Nous vous prions de vÃ©rifier s'il s'agit d'une raison justifiÃ©e ou non.";
+                    $texteWhatsapp = "Alerte Absence\n\n";
+                    $texteWhatsapp .= "Élève : {$eleve->nom_complet}\n";
+                    $texteWhatsapp .= "Date : " . \Carbon\Carbon::parse($request->date)->format('d/m/Y') . "\n\n";
+                    $texteWhatsapp .= "L'élève a été marqué absent en cours.\n";
+                    $texteWhatsapp .= "Nous vous prions de vérifier s'il s'agit d'une raison justifiée ou non.";
 
                     // Envoi au rÃ©pÃ©titeur
                     if (!empty($eleve->repetiteur_whatsapp)) {
@@ -1427,8 +1427,8 @@ class ProfesseurController extends Controller
             // Envoyer la notification avec le code
             // Envoyer le code de rÃ©initialisation par WhatsApp
             if (!empty($user->phone)) {
-                $texteWhatsapp = "ðŸ” *RÃ©initialisation de Mot de passe*\n\n";
-                $texteWhatsapp .= "Votre code secret est : *$code*\n";
+                $texteWhatsapp = "Réinitialisation de Mot de passe\n\n";
+                $texteWhatsapp .= "Votre code secret est : {$code}\n";
                 $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
 
                 try {
@@ -1739,11 +1739,11 @@ class ProfesseurController extends Controller
                     $tuteurs->push($tuteur);
                 }
 
-                $texteWhatsapp = "ðŸ“š *Nouveau Devoir Ã  faire*\n\n";
-                $texteWhatsapp .= "Ã‰lÃ¨ve : *{$eleve->nom_complet}*\n";
-                $texteWhatsapp .= "MatiÃ¨re : *{$cahier->matiere->nom}*\n";
-                $texteWhatsapp .= "Pour le : *" . \Carbon\Carbon::parse($cahier->date_cours)->format('d/m/Y') . "*\n\n";
-                $texteWhatsapp .= "Travail Ã  faire : _{$cahier->travail_a_faire}_";
+                $texteWhatsapp = "Nouveau Devoir À faire\n\n";
+                $texteWhatsapp .= "Élève : {$eleve->nom_complet}\n";
+                $texteWhatsapp .= "Matière : {$cahier->matiere->nom}\n";
+                $texteWhatsapp .= "Pour le : " . \Carbon\Carbon::parse($cahier->date_cours)->format('d/m/Y') . "\n\n";
+                $texteWhatsapp .= "Travail à faire : {$cahier->travail_a_faire}";
 
                 // --- WHATSAPP REPETITEUR ---
                 if (!empty($eleve->repetiteur_whatsapp)) {
