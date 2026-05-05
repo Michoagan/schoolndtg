@@ -68,7 +68,30 @@ class ProfesseurController extends Controller
         // $professeur->matieres()->attach($validated['matieres']);
 
         // Envoyer la notification avec le code personnel EN CLAIR
-        $professeur->notify(new ProfessorAccountCreatedNotification($professeur, $personalCode));
+        try {
+            $professeur->notify(new ProfessorAccountCreatedNotification($professeur, $personalCode));
+        } catch (\Exception $e) {
+            Log::error('Erreur d\'envoi d\'email lors de la création de professeur: ' . $e->getMessage());
+        }
+
+        // --- ENVOI WHATSAPP AUTOMATIQUE AU PROFESSEUR ---
+        if (!empty($professeur->phone)) {
+            $texteWhatsapp = "👋 *Bienvenue à NDTG, Professeur {$professeur->first_name} {$professeur->last_name} !*\n\n";
+            $texteWhatsapp .= "Votre compte a été créé avec succès.\n";
+            $texteWhatsapp .= "🔑 *Vos identifiants :*\n";
+            $texteWhatsapp .= "- Email : {$professeur->email}\n";
+            $texteWhatsapp .= "- Code personnel : *{$personalCode}*\n\n";
+            $texteWhatsapp .= "Veuillez conserver ce code précieusement. Il vous servira pour vous connecter à l'application.";
+
+            try {
+                \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    'phone' => $professeur->phone,
+                    'message' => $texteWhatsapp
+                ]);
+            } catch (\Exception $reqEx) {
+                Log::error('Erreur HTTP vers Bot WhatsApp (Création Prof) : ' . $reqEx->getMessage());
+            }
+        }
 
         // Réponse JSON au lieu de redirect
         return response()->json([
