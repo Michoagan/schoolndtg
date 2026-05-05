@@ -32,7 +32,7 @@ class ProfesseurController extends Controller
             'first_name' => 'required|string|max:255',
             'gender' => 'required|in:M,F',
             'birth_date' => 'required|date|before:-18 years',
-            'email' => 'required|email|unique:professeurs,email',
+            'email' => ['required', 'email', \Illuminate\Validation\Rule::unique('professeurs')->whereNull('deleted_at')],
             'phone' => 'required|string|max:20',
             'matiere_id' => 'required|exists:matieres,id',
             'photo' => 'required|image|mimes:jpg,jpeg,png|max:2048',
@@ -150,7 +150,7 @@ class ProfesseurController extends Controller
                 }
             }
 
-            $professeur->delete();
+            $professeur->forceDelete();
 
             return response()->json([
                 'success' => true,
@@ -174,7 +174,7 @@ class ProfesseurController extends Controller
             'first_name' => 'required|string|max:255',
             'gender' => 'required|in:M,F',
             'birth_date' => 'required|date|before:-18 years',
-            'email' => 'required|email|unique:professeurs,email,'.$professeur->id,
+            'email' => ['required', 'email', \Illuminate\Validation\Rule::unique('professeurs')->ignore($professeur->id)->whereNull('deleted_at')],
             'phone' => 'required|string|max:20',
             'matiere_id' => 'required|exists:matieres,id',
             'photo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
