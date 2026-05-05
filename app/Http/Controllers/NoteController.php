@@ -262,7 +262,7 @@ class NoteController extends Controller
                         // Envoi au répétiteur
                         if (!empty($eleveAlerte->repetiteur_whatsapp)) {
                             try {
-                                \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                                     'phone' => $eleveAlerte->repetiteur_whatsapp,
                                     'message' => $texteWhatsapp
                                 ]);
@@ -275,7 +275,7 @@ class NoteController extends Controller
                         foreach ($tuteurs as $tuteur) {
                             if (!empty($tuteur->telephone)) {
                                 try {
-                                    \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                                         'phone' => $tuteur->telephone,
                                         'message' => $texteWhatsapp
                                     ]);

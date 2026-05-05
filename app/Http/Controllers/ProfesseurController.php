@@ -40,7 +40,7 @@ class ProfesseurController extends Controller
 
         $personalCode = strtoupper(substr($validated['last_name'], 0, 5)).rand(1000, 9999);
 
-        // Gérer l'upload de la photo
+        // GÃ©rer l'upload de la photo
         $photoName = null;
         if ($request->hasFile('photo')) {
             $firebaseStorage = new \App\Services\FirebaseStorageService();
@@ -50,7 +50,7 @@ class ProfesseurController extends Controller
             }
         }
 
-        // Créer le professeur
+        // CrÃ©er le professeur
         $professeur = Professeur::create([
             'last_name' => $validated['last_name'],
             'first_name' => $validated['first_name'],
@@ -64,39 +64,39 @@ class ProfesseurController extends Controller
             'personal_code' => Hash::make($personalCode), // Stocker le hash en base
         ]);
 
-        // Attacher les matières (Legacy support if needed, but we are moving to 1-1)
+        // Attacher les matiÃ¨res (Legacy support if needed, but we are moving to 1-1)
         // $professeur->matieres()->attach($validated['matieres']);
 
         // Envoyer la notification avec le code personnel EN CLAIR
         try {
             $professeur->notify(new ProfessorAccountCreatedNotification($professeur, $personalCode));
         } catch (\Throwable $e) {
-            Log::error('Erreur d\'envoi d\'email lors de la création de professeur: ' . $e->getMessage());
+            Log::error('Erreur d\'envoi d\'email lors de la crÃ©ation de professeur: ' . $e->getMessage());
         }
 
         // --- ENVOI WHATSAPP AUTOMATIQUE AU PROFESSEUR ---
         if (!empty($professeur->phone)) {
-            $texteWhatsapp = "👋 *Bienvenue à NDTG, Professeur {$professeur->first_name} {$professeur->last_name} !*\n\n";
-            $texteWhatsapp .= "Votre compte a été créé avec succès.\n";
-            $texteWhatsapp .= "🔑 *Vos identifiants :*\n";
+            $texteWhatsapp = "ðŸ‘‹ *Bienvenue Ã  NDTG, Professeur {$professeur->first_name} {$professeur->last_name} !*\n\n";
+            $texteWhatsapp .= "Votre compte a Ã©tÃ© crÃ©Ã© avec succÃ¨s.\n";
+            $texteWhatsapp .= "ðŸ”‘ *Vos identifiants :*\n";
             $texteWhatsapp .= "- Email : {$professeur->email}\n";
             $texteWhatsapp .= "- Code personnel : *{$personalCode}*\n\n";
-            $texteWhatsapp .= "Veuillez conserver ce code précieusement. Il vous servira pour vous connecter à l'application.";
+            $texteWhatsapp .= "Veuillez conserver ce code prÃ©cieusement. Il vous servira pour vous connecter Ã  l'application.";
 
             try {
-                \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                     'phone' => $professeur->phone,
                     'message' => $texteWhatsapp
                 ]);
             } catch (\Throwable $reqEx) {
-                Log::error('Erreur HTTP vers Bot WhatsApp (Création Prof) : ' . $reqEx->getMessage());
+                Log::error('Erreur HTTP vers Bot WhatsApp (CrÃ©ation Prof) : ' . $reqEx->getMessage());
             }
         }
 
-        // Réponse JSON au lieu de redirect
+        // RÃ©ponse JSON au lieu de redirect
         return response()->json([
             'success' => true,
-            'message' => 'Professeur inscrit avec succès! Un email avec le code personnel a été envoyé.',
+            'message' => 'Professeur inscrit avec succÃ¨s! Un email avec le code personnel a Ã©tÃ© envoyÃ©.',
             'data' => $professeur,
         ], 201);
     }
@@ -104,7 +104,7 @@ class ProfesseurController extends Controller
     /**
      * Afficher la liste des professeurs
      */
-    // Dans votre méthode index() ou show() du contrôleur
+    // Dans votre mÃ©thode index() ou show() du contrÃ´leur
     public function index()
     {
         try {
@@ -116,7 +116,7 @@ class ProfesseurController extends Controller
                 'professeurs' => $professeurs,
             ]);
         } catch (\Exception $e) {
-            Log::error('Erreur lors de la récupération des professeurs: '.$e->getMessage());
+            Log::error('Erreur lors de la rÃ©cupÃ©ration des professeurs: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
@@ -131,7 +131,7 @@ class ProfesseurController extends Controller
     // public function edit(Professeur $professeur) removed
 
     /**
-     * Mettre à jour un professeur
+     * Mettre Ã  jour un professeur
      */
 
     /**
@@ -154,7 +154,7 @@ class ProfesseurController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Professeur supprimé avec succès!',
+                'message' => 'Professeur supprimÃ© avec succÃ¨s!',
             ]);
 
         } catch (\Exception $e) {
@@ -212,7 +212,7 @@ class ProfesseurController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Professeur modifié avec succès',
+                'message' => 'Professeur modifiÃ© avec succÃ¨s',
                 'data' => $professeur,
             ]);
 
@@ -238,17 +238,17 @@ class ProfesseurController extends Controller
 
         $credentials = $request->only('email', 'personal_code');
 
-        // Vérifier si le professeur existe avec cet email
+        // VÃ©rifier si le professeur existe avec cet email
         $professeur = Professeur::where('email', $credentials['email'])->first();
 
         if (! $professeur) {
             return back()->withErrors([
-                'email' => 'Aucun professeur trouvé avec cet email.',
+                'email' => 'Aucun professeur trouvÃ© avec cet email.',
             ])->withInput();
         }
 
-        // Vérifier le code personnel
-        // Vérifier le code personnel
+        // VÃ©rifier le code personnel
+        // VÃ©rifier le code personnel
         if (! Hash::check($credentials['personal_code'], $professeur->personal_code)) {
             return response()->json([
                 'success' => false,
@@ -256,12 +256,12 @@ class ProfesseurController extends Controller
             ], 401);
         }
 
-        // Créer un token Sanctum
+        // CrÃ©er un token Sanctum
         $token = $professeur->createToken('professeur_token')->plainTextToken;
 
         return response()->json([
             'success' => true,
-            'message' => 'Connexion réussie',
+            'message' => 'Connexion rÃ©ussie',
             'access_token' => $token,
             'token_type' => 'Bearer',
             'user' => $professeur,
@@ -270,7 +270,7 @@ class ProfesseurController extends Controller
 
     public function logout()
     {
-        // Révoquer le token actuel
+        // RÃ©voquer le token actuel
         if (Auth::guard('sanctum')->check()) {
             /** @var \Laravel\Sanctum\PersonalAccessToken $token */
             $token = Auth::guard('sanctum')->user()->currentAccessToken();
@@ -281,7 +281,7 @@ class ProfesseurController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Déconnexion réussie',
+            'message' => 'DÃ©connexion rÃ©ussie',
              ]);
     }
 
@@ -305,7 +305,7 @@ class ProfesseurController extends Controller
     }
 
     /**
-     * Signaler un exercice non fait pour un élève
+     * Signaler un exercice non fait pour un Ã©lÃ¨ve
      */
     public function signalerExerciceNonFait(Request $request)
     {
@@ -316,13 +316,13 @@ class ProfesseurController extends Controller
         $professeur = Auth::user();
 
         if (!$professeur instanceof \App\Models\Professeur) {
-            return response()->json(['error' => 'Non autorisé'], 403);
+            return response()->json(['error' => 'Non autorisÃ©'], 403);
         }
 
         try {
             $eleve = \App\Models\Eleve::findOrFail($request->eleve_id);
             
-            // Récupérer les tuteurs de l'élève
+            // RÃ©cupÃ©rer les tuteurs de l'Ã©lÃ¨ve
             $tuteurs = $eleve->tuteurs;
 
             if ($tuteurs->isNotEmpty()) {
@@ -330,15 +330,15 @@ class ProfesseurController extends Controller
                 \Illuminate\Support\Facades\Notification::send($tuteurs, new \App\Notifications\ExerciceNonFaitNotification($eleve));
             }
 
-            $texteWhatsapp = "⚠️ *Alerte Exercice Non Fait*\n\n";
-            $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+            $texteWhatsapp = "âš ï¸ *Alerte Exercice Non Fait*\n\n";
+            $texteWhatsapp .= "Ã‰lÃ¨ve : *{$eleve->nom_complet}*\n";
             $texteWhatsapp .= "Le professeur *{$professeur->nom} {$professeur->prenom}* signale que votre enfant n'a pas fait son exercice aujourd'hui.\n\n";
-            $texteWhatsapp .= "Merci de suivre cela de près.";
+            $texteWhatsapp .= "Merci de suivre cela de prÃ¨s.";
 
             // --- ENVOI WHATSAPP AUTOMATIQUE AU REPETITEUR ---
             if (!empty($eleve->repetiteur_whatsapp)) {
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                         'phone' => $eleve->repetiteur_whatsapp,
                         'message' => $texteWhatsapp
                     ]);
@@ -351,7 +351,7 @@ class ProfesseurController extends Controller
             foreach ($tuteurs as $tuteur) {
                 if (!empty($tuteur->telephone)) {
                     try {
-                        \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                        \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                             'phone' => $tuteur->telephone,
                             'message' => $texteWhatsapp
                         ]);
@@ -363,7 +363,7 @@ class ProfesseurController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'L\'exercice non fait a été signalé aux parents.',
+                'message' => 'L\'exercice non fait a Ã©tÃ© signalÃ© aux parents.',
             ]);
 
         } catch (\Exception $e) {
@@ -377,7 +377,7 @@ class ProfesseurController extends Controller
     }
 
     /**
-     * Changer le code personnel (Authentifié)
+     * Changer le code personnel (AuthentifiÃ©)
      */
     public function changeCode(Request $request)
     {
@@ -400,12 +400,12 @@ class ProfesseurController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Code personnel modifié avec succès.',
+            'message' => 'Code personnel modifiÃ© avec succÃ¨s.',
         ]);
     }
 
     /**
-     * Demande de réinitialisation de code (Public)
+     * Demande de rÃ©initialisation de code (Public)
      */
     public function forgotCode(Request $request)
     {
@@ -414,14 +414,14 @@ class ProfesseurController extends Controller
         $professeur = Professeur::where('email', $request->email)->first();
 
         if (! $professeur) {
-            // Pour sécurité, on dit quand même envoyé
+            // Pour sÃ©curitÃ©, on dit quand mÃªme envoyÃ©
             return response()->json([
                 'success' => true,
-                'message' => 'Si cet email existe, un code de réinitialisation a été envoyé.',
+                'message' => 'Si cet email existe, un code de rÃ©initialisation a Ã©tÃ© envoyÃ©.',
             ]);
         }
 
-        // Générer un code à 6 chiffres
+        // GÃ©nÃ©rer un code Ã  6 chiffres
         $code = rand(100000, 999999);
 
         // Stocker dans password_reset_codes (table commune ou nouvelle)
@@ -430,23 +430,32 @@ class ProfesseurController extends Controller
             ['code' => $code, 'created_at' => now()]
         );
 
-        // Envoyer notification (Simulé ici, à implémenter avec Notification class)
-        // $professeur->notify(new ResetCodeNotification($code));
-        // Pour le hackathon/démo: log le code ou utiliser une méthode simple
-        // TODO: Créer la notification réelle
-        
-        // TEMPORAIRE: Log pour démo sans mailer configuré
-        Log::info("RESET CODE pour {$professeur->email}: $code");
+        // Envoyer le code de réinitialisation par WhatsApp
+        if (!empty($professeur->phone)) {
+            $texteWhatsapp = "🔐 *Réinitialisation de Code Personnel*\n\n";
+            $texteWhatsapp .= "Votre code de récupération est : *$code*\n";
+            $texteWhatsapp .= "Ce code est valide pour une courte durée. Ne le partagez avec personne.";
+
+            try {
+                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    'phone' => $professeur->phone,
+                    'message' => $texteWhatsapp
+                ]);
+            } catch (\Exception $reqEx) {
+                Log::error('Erreur HTTP WhatsApp (Forgot Code Prof) : ' . $reqEx->getMessage());
+            }
+        } else {
+            Log::warning("PROF RESET CODE pour {$professeur->email}: $code (Numéro manquant)");
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Un code de réinitialisation a été envoyé à votre email.',
-            'debug_code' => $code, // A RETIRER EN PROD
+            'message' => 'Un code de réinitialisation a été envoyé sur votre numéro WhatsApp.',
         ]);
     }
 
     /**
-     * Réinitialiser le code avec le token (Public)
+     * RÃ©initialiser le code avec le token (Public)
      */
     public function resetCode(Request $request)
     {
@@ -463,7 +472,7 @@ class ProfesseurController extends Controller
         if (! $resetEntry || $resetEntry->created_at->addMinutes(15)->isPast()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Code invalide ou expiré.',
+                'message' => 'Code invalide ou expirÃ©.',
             ], 400);
         }
 
@@ -471,12 +480,12 @@ class ProfesseurController extends Controller
         $professeur->personal_code = Hash::make($request->new_personal_code);
         $professeur->save();
 
-        // Supprimer le code utilisé
+        // Supprimer le code utilisÃ©
         $resetEntry->delete();
 
         return response()->json([
             'success' => true,
-            'message' => 'Votre code personnel a été réinitialisé avec succès. Vous pouvez vous connecter.',
+            'message' => 'Votre code personnel a Ã©tÃ© rÃ©initialisÃ© avec succÃ¨s. Vous pouvez vous connecter.',
         ]);
     }
 
@@ -487,12 +496,12 @@ class ProfesseurController extends Controller
             $professeur = $request->user();
             // ...
 
-            // Charger les classes avec les élèves ET la matière
+            // Charger les classes avec les Ã©lÃ¨ves ET la matiÃ¨re
             $professeur->load(['matiere', 'classes.eleves' => function ($query) {
                 $query->orderBy('nom')->orderBy('prenom');
             }]);
 
-            // Récupérer les statistiques
+            // RÃ©cupÃ©rer les statistiques
             $stats = [
                 'classes_count' => $professeur->classes->count(),
                 'eleves_count' => $professeur->classes->sum(function ($classe) {
@@ -501,14 +510,14 @@ class ProfesseurController extends Controller
                 'cours_semaine' => \App\Models\EmploiDuTemps::where('professeur_id', $professeur->id)->count(),
             ];
 
-            // Récupérer les communiqués récents (Général ou Professeurs)
+            // RÃ©cupÃ©rer les communiquÃ©s rÃ©cents (GÃ©nÃ©ral ou Professeurs)
             $communiques = \App\Models\Communique::whereIn('type', ['general', 'professeurs'])
                 ->where('is_published', true)
                 ->orderBy('created_at', 'desc')
                 ->take(5)
                 ->get();
 
-            // Récupérer les événements à venir
+            // RÃ©cupÃ©rer les Ã©vÃ©nements Ã  venir
             $evenements = \App\Models\Evenement::where('date_fin', '>=', now())
                 ->orderBy('date_debut', 'asc')
                 ->take(5)
@@ -536,10 +545,10 @@ class ProfesseurController extends Controller
             $professeur = Auth::user();
 
             if (! $professeur instanceof Professeur) {
-                return response()->json(['error' => 'Non autorisé'], 403);
+                return response()->json(['error' => 'Non autorisÃ©'], 403);
             }
 
-            // Récupérer l'emploi du temps avec relations
+            // RÃ©cupÃ©rer l'emploi du temps avec relations
             $emploisDuTemps = \App\Models\EmploiDuTemps::with(['classe:id,nom', 'matiere:id,nom'])
                 ->where('professeur_id', $professeur->id)
                 ->orderByRaw("CASE jour 
@@ -563,7 +572,7 @@ class ProfesseurController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Une erreur est survenue lors de la récupération de l\'emploi du temps.',
+                'message' => 'Une erreur est survenue lors de la rÃ©cupÃ©ration de l\'emploi du temps.',
             ], 500);
         }
     }
@@ -574,23 +583,23 @@ class ProfesseurController extends Controller
             $professeur = Auth::user();
 
             if (! $professeur instanceof Professeur) {
-                return response()->json(['error' => 'Non autorisé'], 403);
+                return response()->json(['error' => 'Non autorisÃ©'], 403);
             }
 
-            // Récupérer les paiements générés par la comptabilité
+            // RÃ©cupÃ©rer les paiements gÃ©nÃ©rÃ©s par la comptabilitÃ©
             $paiements = \App\Models\PaiementProfesseur::where('professeur_id', $professeur->id)
                 ->orderBy('annee', 'desc')
                 ->orderBy('mois', 'desc')
                 ->get();
 
-            // Calculer les heures non payées du mois en cours
+            // Calculer les heures non payÃ©es du mois en cours
             $moisActuel = date('n');
             $anneeActuelle = date('Y');
 
             $heuresEffectuees = \App\Models\CahierTexte::where('professeur_id', $professeur->id)
                 ->whereMonth('date_cours', $moisActuel)
                 ->whereYear('date_cours', $anneeActuelle)
-                ->whereNull('paiement_id') // S'assurer qu'elles n'ont pas encore été rattachées à un paiement
+                ->whereNull('paiement_id') // S'assurer qu'elles n'ont pas encore Ã©tÃ© rattachÃ©es Ã  un paiement
                 ->get();
 
             $totalHeuresVol = 0;
@@ -610,7 +619,7 @@ class ProfesseurController extends Controller
                 $montantEstime += ($heures * $tauxApplique);
             }
 
-            // Ajouter les primes fixes à l'estimation
+            // Ajouter les primes fixes Ã  l'estimation
             foreach($tauxConfigures as $tc) {
                 $montantEstime += $tc->prime_mensuelle;
             }
@@ -629,7 +638,7 @@ class ProfesseurController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la récupération des paiements.',
+                'message' => 'Erreur lors de la rÃ©cupÃ©ration des paiements.',
             ], 500);
         }
     }
@@ -639,7 +648,7 @@ class ProfesseurController extends Controller
         $professeur = Auth::user();
 
         if (! $professeur instanceof Professeur) {
-            return response()->json(['error' => 'Non autorisé'], 403);
+            return response()->json(['error' => 'Non autorisÃ©'], 403);
         }
 
         $paiement = \App\Models\PaiementProfesseur::with('professeur')
@@ -678,15 +687,15 @@ class ProfesseurController extends Controller
     {
         $professeur = Auth::user();
 
-        // Vérifier que c'est bien un professeur
+        // VÃ©rifier que c'est bien un professeur
         if (! $professeur instanceof Professeur) {
-            return response()->json(['error' => 'Non autorisé'], 403);
+            return response()->json(['error' => 'Non autorisÃ©'], 403);
         }
         // ...
 
-        // Vérifier que le professeur a accès à cette classe
+        // VÃ©rifier que le professeur a accÃ¨s Ã  cette classe
         if (! $professeur->classes->contains($classeId)) {
-            return response()->json(['error' => 'Accès non autorisé'], 403);
+            return response()->json(['error' => 'AccÃ¨s non autorisÃ©'], 403);
         }
 
         $classe = Classe::with(['matieres' => function ($query) {
@@ -705,7 +714,7 @@ class ProfesseurController extends Controller
         $professeur = Auth::user();
 
         if (! $professeur instanceof Professeur) {
-            return response()->json(['error' => 'Non autorisé'], 403);
+            return response()->json(['error' => 'Non autorisÃ©'], 403);
         }
 
         $anneeActive = $request->query('annee_scolaire', \App\Models\Setting::getCurrentAnneeScolaire());
@@ -721,18 +730,18 @@ class ProfesseurController extends Controller
         $matiere_selectionnee = null;
         $eleves = collect();
 
-        // 1. Si une classe est sélectionnée (filtrage des élèves)
+        // 1. Si une classe est sÃ©lectionnÃ©e (filtrage des Ã©lÃ¨ves)
         if ($request->has('classe_id')) {
             $classe_selectionnee = $professeur->classes->firstWhere('id', $request->classe_id);
 
             if ($classe_selectionnee) {
-                // Charger les élèves de cette classe
+                // Charger les Ã©lÃ¨ves de cette classe
                 $eleves = Eleve::where('classe_id', $classe_selectionnee->id)
                     ->orderBy('nom')
                     ->orderBy('prenom')
                     ->get();
                 
-                // Déduction stricte de la matière (cohérent avec getPresences)
+                // DÃ©duction stricte de la matiÃ¨re (cohÃ©rent avec getPresences)
                 $matiere_selectionnee_id = $professeur->classes()
                     ->where('classe_id', $classe_selectionnee->id)
                     ->first()
@@ -745,8 +754,8 @@ class ProfesseurController extends Controller
             }
         }
 
-        // 2. Si un élève est sélectionné -> Lancer l'analyse
-        // 2. Si un élève est sélectionné -> Lancer l'analyse élève
+        // 2. Si un Ã©lÃ¨ve est sÃ©lectionnÃ© -> Lancer l'analyse
+        // 2. Si un Ã©lÃ¨ve est sÃ©lectionnÃ© -> Lancer l'analyse Ã©lÃ¨ve
         if ($classe_selectionnee && $matiere_selectionnee) {
             $type_analyse = $request->input('type', 'all');
             if ($request->has('eleve_id') && $request->eleve_id) {
@@ -809,7 +818,7 @@ class ProfesseurController extends Controller
     {
         if (!$anneeScolaire) $anneeScolaire = \App\Models\Setting::getCurrentAnneeScolaire();
         try {
-            // Récupérer les notes de l'élève
+            // RÃ©cupÃ©rer les notes de l'Ã©lÃ¨ve
             $notesEleve = Note::where('eleve_id', $eleveId)
                 ->where('classe_id', $classeId)
                 ->where('matiere_id', $matiereId)
@@ -822,7 +831,7 @@ class ProfesseurController extends Controller
                 return null;
             }
 
-            // Récupérer toutes les notes de la classe pour calculer les moyennes par devoir/interro
+            // RÃ©cupÃ©rer toutes les notes de la classe pour calculer les moyennes par devoir/interro
             $notesClasse = Note::where('classe_id', $classeId)
                 ->where('matiere_id', $matiereId)
                 ->where('annee_scolaire', $anneeScolaire)
@@ -834,7 +843,7 @@ class ProfesseurController extends Controller
             $dataClasse = [];
             $statistiquesNotes = [];
 
-            // Définition de la structure des évaluations
+            // DÃ©finition de la structure des Ã©valuations
             $evaluations_all = [
                 'premier_interro' => 'I1',
                 'deuxieme_interro' => 'I2',
@@ -870,7 +879,7 @@ class ProfesseurController extends Controller
                 $noteEleve = $notesEleve->get($trimestre);
                 $notesDuTrimestre = $notesClasse->get($trimestre);
 
-                // Si pas de données pour ce trimestre (ni élève, ni classe), on saute
+                // Si pas de donnÃ©es pour ce trimestre (ni Ã©lÃ¨ve, ni classe), on saute
                 if (! $noteEleve && (! $notesDuTrimestre || $notesDuTrimestre->isEmpty())) {
                     continue;
                 }
@@ -878,14 +887,14 @@ class ProfesseurController extends Controller
                 foreach ($evaluations as $champ => $labelCourt) {
                     $valeurEleve = $noteEleve ? $noteEleve->$champ : null;
                     
-                    // Calcul moyenne classe pour ce champ spécifique
+                    // Calcul moyenne classe pour ce champ spÃ©cifique
                     $moyenneClasse = 0;
                     if ($notesDuTrimestre && $notesDuTrimestre->isNotEmpty()) {
                         $avg = $notesDuTrimestre->avg($champ);
                         $moyenneClasse = $avg ? round($avg, 2) : 0;
                     }
 
-                    // On n'ajoute au graphique que les notes que l'élève a réellement composées
+                    // On n'ajoute au graphique que les notes que l'Ã©lÃ¨ve a rÃ©ellement composÃ©es
                     if ($valeurEleve !== null) {
                         $labels[] = "T$trimestre $labelCourt";
                         $dataEleve[] = floatval($valeurEleve); 
@@ -895,7 +904,7 @@ class ProfesseurController extends Controller
                 }
             }
 
-            // Calculer la vraie moyenne générale (basée sur les moyennes trimestrielles)
+            // Calculer la vraie moyenne gÃ©nÃ©rale (basÃ©e sur les moyennes trimestrielles)
             $moyennesTrimestrielles = [];
             foreach ($notesEleve as $note) {
                 if ($note->moyenne_trimestrielle > 0) {
@@ -927,9 +936,9 @@ class ProfesseurController extends Controller
                 ];
             }
 
-            // Générer les recommandations
+            // GÃ©nÃ©rer les recommandations
             $aiService = app(\App\Services\AiService::class);
-            $matiereNom = \App\Models\Matiere::find($matiereId)->nom ?? 'Matière';
+            $matiereNom = \App\Models\Matiere::find($matiereId)->nom ?? 'MatiÃ¨re';
             
             $performances = [[
                 'matiere' => $matiereNom,
@@ -943,9 +952,9 @@ class ProfesseurController extends Controller
             );
             
             $conseils = [];
-            if (!empty($aiAdvice) && $aiAdvice !== "L'analyse pédagogique n'a pas pu être générée." && strpos($aiAdvice, "Conseil non disponible") === false) {
+            if (!empty($aiAdvice) && $aiAdvice !== "L'analyse pÃ©dagogique n'a pas pu Ãªtre gÃ©nÃ©rÃ©e." && strpos($aiAdvice, "Conseil non disponible") === false) {
                 $conseils[] = [
-                    'type' => 'Synthèse Pédagogique IA',
+                    'type' => 'SynthÃ¨se PÃ©dagogique IA',
                     'recommandations' => [$aiAdvice]
                 ];
             } else {
@@ -964,7 +973,7 @@ class ProfesseurController extends Controller
                 'labels' => $labels,
                 'datasets' => [
                     [
-                        'label' => 'Note Élève',
+                        'label' => 'Note Ã‰lÃ¨ve',
                         'data' => $dataEleve,
                         'borderColor' => '#4CAF50', // Green
                     ],
@@ -978,7 +987,7 @@ class ProfesseurController extends Controller
             ];
 
         } catch (\Exception $e) {
-            Log::error('Erreur analyse notes élève: '.$e->getMessage());
+            Log::error('Erreur analyse notes Ã©lÃ¨ve: '.$e->getMessage());
             return null;
         }
     }
@@ -988,7 +997,7 @@ class ProfesseurController extends Controller
         if (!$anneeScolaire) $anneeScolaire = \App\Models\Setting::getCurrentAnneeScolaire();
         
         try {
-             // Récupérer les moyennes de classe par trimestre
+             // RÃ©cupÃ©rer les moyennes de classe par trimestre
             $moyennes_classe = Note::where('classe_id', $classeId)
                 ->where('matiere_id', $matiereId)
                 ->where('annee_scolaire', $anneeScolaire)
@@ -1018,7 +1027,7 @@ class ProfesseurController extends Controller
             $conseils = [];
             if (!empty($aiAdvice) && strpos($aiAdvice, 'indisponible') === false) {
                 $conseils[] = [
-                    'type' => 'Synthèse Pédagogique IA (Classe)',
+                    'type' => 'SynthÃ¨se PÃ©dagogique IA (Classe)',
                     'recommandations' => [$aiAdvice]
                 ];
             } else {
@@ -1026,7 +1035,7 @@ class ProfesseurController extends Controller
                     'type' => 'Vue d\'ensemble',
                     'recommandations' => [
                         'Ceci est une vue globale de la classe.',
-                        'Sélectionnez un élève pour voir ses performances détaillées et obtenir des conseils personnalisés.'
+                        'SÃ©lectionnez un Ã©lÃ¨ve pour voir ses performances dÃ©taillÃ©es et obtenir des conseils personnalisÃ©s.'
                     ]
                 ];
             }
@@ -1074,34 +1083,34 @@ class ProfesseurController extends Controller
         $tendance = $data['statistiques']['tendance'] ?? 'stable';
 
         if ($moyenne >= 15) {
-            $recommandations[] = 'Excellentes performances! Continuez à maintenir ce niveau.';
-            $recommandations[] = "Envisagez d'aider vos camarades ou d'explorer des sujets plus avancés.";
+            $recommandations[] = 'Excellentes performances! Continuez Ã  maintenir ce niveau.';
+            $recommandations[] = "Envisagez d'aider vos camarades ou d'explorer des sujets plus avancÃ©s.";
         } elseif ($moyenne >= 12) {
-            $recommandations[] = 'Bon travail! Vos résultats sont satisfaisants.';
-            $recommandations[] = 'Concentrez-vous sur la régularité pour progresser encore.';
+            $recommandations[] = 'Bon travail! Vos rÃ©sultats sont satisfaisants.';
+            $recommandations[] = 'Concentrez-vous sur la rÃ©gularitÃ© pour progresser encore.';
         } elseif ($moyenne >= 10) {
-            $recommandations[] = 'Résultats passables. Essayez de vous exercer davantage.';
-            $recommandations[] = "N'hésitez pas à poser des questions en classe.";
+            $recommandations[] = 'RÃ©sultats passables. Essayez de vous exercer davantage.';
+            $recommandations[] = "N'hÃ©sitez pas Ã  poser des questions en classe.";
         } else {
-            $recommandations[] = 'Attention nécessaire. Vous devriez revoir les bases.';
-            $recommandations[] = 'Envisagez un soutien supplémentaire.';
+            $recommandations[] = 'Attention nÃ©cessaire. Vous devriez revoir les bases.';
+            $recommandations[] = 'Envisagez un soutien supplÃ©mentaire.';
         }
 
         if ($tendance === 'progressif') {
-            $recommandations[] = 'Félicitations pour votre nette progression!';
+            $recommandations[] = 'FÃ©licitations pour votre nette progression!';
         } elseif ($tendance === 'regressif') {
-            $recommandations[] = 'Vos résultats ont baissé. Identifiez les difficultés et travaillez à les surmonter.';
+            $recommandations[] = 'Vos rÃ©sultats ont baissÃ©. Identifiez les difficultÃ©s et travaillez Ã  les surmonter.';
         }
 
         return $recommandations;
     }
 
-    // Méthode pour générer les graphiques en base64
+    // MÃ©thode pour gÃ©nÃ©rer les graphiques en base64
     private function generateCharts($analyseData)
     {
         $charts = [];
 
-        // Graphique 1: Évolution des moyennes (élève vs classe)
+        // Graphique 1: Ã‰volution des moyennes (Ã©lÃ¨ve vs classe)
         if (! empty($analyseData['trimestres'])) {
             $charts['evolution'] = $this->generateEvolutionChart(
                 $analyseData['trimestres'],
@@ -1110,7 +1119,7 @@ class ProfesseurController extends Controller
             );
         }
 
-        // Graphique 2: Répartition des notes
+        // Graphique 2: RÃ©partition des notes
         if (! empty($analyseData['notes_interros']) || ! empty($analyseData['notes_devoirs'])) {
             $charts['repartition'] = $this->generateRepartitionChart(
                 $analyseData['notes_interros'],
@@ -1121,16 +1130,16 @@ class ProfesseurController extends Controller
         return $charts;
     }
 
-    // Méthodes pour générer les images de graphiques (implémentation basique)
+    // MÃ©thodes pour gÃ©nÃ©rer les images de graphiques (implÃ©mentation basique)
     private function generateEvolutionChart($trimestres, $moyennesEleve, $moyennesClasse)
     {
-        // Cette méthode générerait normalement une image de graphique
-        // Pour cette démo, nous retournons un placeholder
+        // Cette mÃ©thode gÃ©nÃ©rerait normalement une image de graphique
+        // Pour cette dÃ©mo, nous retournons un placeholder
         return 'data:image/svg+xml;base64,'.base64_encode('
         <svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">
             <rect width="100%" height="100%" fill="#f8f9fa"/>
             <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="14">
-                Graphique d\'évolution des moyennes
+                Graphique d\'Ã©volution des moyennes
             </text>
             <text x="50%" y="65%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="12" fill="#6c757d">
                 (Trimestres: '.implode(', ', $trimestres).')
@@ -1141,12 +1150,12 @@ class ProfesseurController extends Controller
 
     private function generateRepartitionChart($notesInterros, $notesDevoirs)
     {
-        // Cette méthode générerait normalement une image de graphique
+        // Cette mÃ©thode gÃ©nÃ©rerait normalement une image de graphique
         return 'data:image/svg+xml;base64,'.base64_encode('
         <svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200">
             <rect width="100%" height="100%" fill="#f8f9fa"/>
             <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="14">
-                Graphique de répartition des notes
+                Graphique de rÃ©partition des notes
             </text>
             <text x="50%" y="65%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="12" fill="#6c757d">
                 (Interros: '.count($notesInterros).', Devoirs: '.count($notesDevoirs).')
@@ -1160,9 +1169,9 @@ class ProfesseurController extends Controller
         try {
             $professeur = Auth::user();
 
-            // Vérifier que le professeur a accès à cette classe
+            // VÃ©rifier que le professeur a accÃ¨s Ã  cette classe
             if (! $professeur->classes->contains($classeId)) {
-                return response()->json(['error' => 'Accès non autorisé'], 403);
+                return response()->json(['error' => 'AccÃ¨s non autorisÃ©'], 403);
             }
 
             $classe = Classe::with(['matieres' => function ($query) use ($professeur) {
@@ -1172,8 +1181,8 @@ class ProfesseurController extends Controller
 
             $matieres = $classe->matieres;
 
-            // Fallback: Si aucune matière n'est trouvée via le pivot strict,
-            // on ajoute la matière principale du professeur s'il en a une.
+            // Fallback: Si aucune matiÃ¨re n'est trouvÃ©e via le pivot strict,
+            // on ajoute la matiÃ¨re principale du professeur s'il en a une.
             if ($matieres->isEmpty() && $professeur->matiere_id) {
                 $mainMatiere = Matiere::find($professeur->matiere_id);
                 if ($mainMatiere) {
@@ -1190,7 +1199,7 @@ class ProfesseurController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors du chargement des matières',
+                'message' => 'Erreur lors du chargement des matiÃ¨res',
             ], 500);
         }
     }
@@ -1200,12 +1209,12 @@ class ProfesseurController extends Controller
         try {
             $professeur = Auth::user();
 
-            // Vérifier que le professeur a accès à cette classe
+            // VÃ©rifier que le professeur a accÃ¨s Ã  cette classe
             if (! $professeur->classes->contains($classeId)) {
-                return response()->json(['error' => 'Accès non autorisé'], 403);
+                return response()->json(['error' => 'AccÃ¨s non autorisÃ©'], 403);
             }
 
-            // Charger les élèves de la classe
+            // Charger les Ã©lÃ¨ves de la classe
             $classe = Classe::with(['eleves' => function ($query) {
                 $query->orderBy('nom')->orderBy('prenom');
             }])->findOrFail($classeId);
@@ -1215,11 +1224,11 @@ class ProfesseurController extends Controller
                 'eleves' => $classe->eleves,
             ]);
         } catch (\Exception $e) {
-            Log::error('Erreur lors de la récupération des élèves: '.$e->getMessage());
+            Log::error('Erreur lors de la rÃ©cupÃ©ration des Ã©lÃ¨ves: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors du chargement des élèves',
+                'message' => 'Erreur lors du chargement des Ã©lÃ¨ves',
             ], 500);
         }
     }
@@ -1229,12 +1238,12 @@ class ProfesseurController extends Controller
         try {
             $professeur = Auth::user();
 
-            // Vérifier que le professeur a accès à cette classe
+            // VÃ©rifier que le professeur a accÃ¨s Ã  cette classe
             if (! $professeur->classes->contains($classeId)) {
-                return response()->json(['error' => 'Accès non autorisé'], 403);
+                return response()->json(['error' => 'AccÃ¨s non autorisÃ©'], 403);
             }
 
-            // Déduction stricte de la matière (comme pour AnalyseNotes)
+            // DÃ©duction stricte de la matiÃ¨re (comme pour AnalyseNotes)
             $matiere = $professeur->classes()
                 ->where('classe_id', $classeId)
                 ->first()
@@ -1243,12 +1252,12 @@ class ProfesseurController extends Controller
 
             $date = $request->query('date', now()->format('Y-m-d'));
 
-            // Récupérer les présences pour cette classe, cette date ET cette matière
+            // RÃ©cupÃ©rer les prÃ©sences pour cette classe, cette date ET cette matiÃ¨re
             $query = \App\Models\Presence::where('classe_id', $classeId)
                 ->whereDate('date', $date)
                 ->with('eleve');
 
-            // Filtrer par matière si trouvée
+            // Filtrer par matiÃ¨re si trouvÃ©e
             if ($matiere) {
                 $query->where('cours_id', $matiere);
             }
@@ -1261,11 +1270,11 @@ class ProfesseurController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Erreur lors de la récupération des présences: '.$e->getMessage());
+            Log::error('Erreur lors de la rÃ©cupÃ©ration des prÃ©sences: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors du chargement des présences',
+                'message' => 'Erreur lors du chargement des prÃ©sences',
             ], 500);
         }
     }
@@ -1282,12 +1291,12 @@ class ProfesseurController extends Controller
 
         $professeur = Auth::user();
 
-        // 1. Vérification stricte de l'accès à la classe
+        // 1. VÃ©rification stricte de l'accÃ¨s Ã  la classe
         if (!$professeur->classes->contains($request->classe_id)) {
-            return response()->json(['error' => 'Vous n\'êtes pas assigné à cette classe.'], 403);
+            return response()->json(['error' => 'Vous n\'Ãªtes pas assignÃ© Ã  cette classe.'], 403);
         }
 
-        // 2. Déduction stricte de la matière
+        // 2. DÃ©duction stricte de la matiÃ¨re
         $matiere = $professeur->classes()
             ->where('classe_id', $request->classe_id)
             ->first()
@@ -1295,7 +1304,7 @@ class ProfesseurController extends Controller
             ->matiere_id ?? $professeur->matiere_id;
 
         if (!$matiere) {
-             return response()->json(['error' => 'Aucune matière associée à votre profil pour cette classe.'], 422);
+             return response()->json(['error' => 'Aucune matiÃ¨re associÃ©e Ã  votre profil pour cette classe.'], 422);
         }
 
         DB::beginTransaction();
@@ -1310,7 +1319,7 @@ class ProfesseurController extends Controller
                         'eleve_id' => $eleve->id,
                         'classe_id' => $request->classe_id,
                         'date' => $request->date,
-                        'cours_id' => $matiere // Constraint relâchée via migration
+                        'cours_id' => $matiere // Constraint relÃ¢chÃ©e via migration
                     ],
                     [
                         'professeur_id' => $professeur->id,
@@ -1322,16 +1331,16 @@ class ProfesseurController extends Controller
                 $isNewAbsent = $isAbsent && ($presence->wasRecentlyCreated || $presence->wasChanged('present'));
 
                 if ($isNewAbsent) {
-                    $texteWhatsapp = "❌ *Alerte Absence*\n\n";
-                    $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
+                    $texteWhatsapp = "âŒ *Alerte Absence*\n\n";
+                    $texteWhatsapp .= "Ã‰lÃ¨ve : *{$eleve->nom_complet}*\n";
                     $texteWhatsapp .= "Date : *" . \Carbon\Carbon::parse($request->date)->format('d/m/Y') . "*\n\n";
-                    $texteWhatsapp .= "L'élève a été marqué absent en cours.\n";
-                    $texteWhatsapp .= "Nous vous prions de vérifier s'il s'agit d'une raison justifiée ou non.";
+                    $texteWhatsapp .= "L'Ã©lÃ¨ve a Ã©tÃ© marquÃ© absent en cours.\n";
+                    $texteWhatsapp .= "Nous vous prions de vÃ©rifier s'il s'agit d'une raison justifiÃ©e ou non.";
 
-                    // Envoi au répétiteur
+                    // Envoi au rÃ©pÃ©titeur
                     if (!empty($eleve->repetiteur_whatsapp)) {
                         try {
-                            \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                            \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                                 'phone' => $eleve->repetiteur_whatsapp,
                                 'message' => $texteWhatsapp
                             ]);
@@ -1344,7 +1353,7 @@ class ProfesseurController extends Controller
                     foreach ($eleve->tuteurs as $tuteur) {
                         if (!empty($tuteur->telephone)) {
                             try {
-                                \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                                     'phone' => $tuteur->telephone,
                                     'message' => $texteWhatsapp
                                 ]);
@@ -1360,12 +1369,12 @@ class ProfesseurController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Présences enregistrées avec succès.',
+                'message' => 'PrÃ©sences enregistrÃ©es avec succÃ¨s.',
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Erreur enregistrement présences: ' . $e->getMessage());
+            Log::error('Erreur enregistrement prÃ©sences: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de l\'enregistrement.',
@@ -1383,30 +1392,30 @@ class ProfesseurController extends Controller
     }
 
     /**
-     * Générer et envoyer le code secret
+     * GÃ©nÃ©rer et envoyer le code secret
      */
     public function sendResetCode(Request $request)
     {
         $request->validate([
-            'email' => 'required|email|exists:direction,email',
+            'email' => 'required|email|exists:professeurs,email',
         ], [
-            'email.exists' => 'Aucun compte trouvé avec cette adresse email.',
+            'email.exists' => 'Aucun professeur trouvé avec cette adresse email.',
         ]);
 
-        // Vérifier d'abord si l'utilisateur existe
-        $user = Direction::where('email', $request->email)->first();
+        // Vérifier d'abord si le professeur existe
+        $user = Professeur::where('email', $request->email)->first();
 
         if (! $user) {
-            return response()->json(['success' => false, 'message' => 'Utilisateur non trouvé.'], 404);
+            return response()->json(['success' => false, 'message' => 'Professeur non trouvé.'], 404);
         }
 
-        // Générer un code à 6 chiffres
+        // GÃ©nÃ©rer un code Ã  6 chiffres
         $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
         // Supprimer les anciens codes pour cet email
         PasswordResetCode::where('email', $request->email)->delete();
 
-        // Créer un nouveau code avec expiration (15 minutes)
+        // CrÃ©er un nouveau code avec expiration (15 minutes)
         PasswordResetCode::create([
             'email' => $request->email,
             'code' => $code,
@@ -1416,14 +1425,14 @@ class ProfesseurController extends Controller
 
         try {
             // Envoyer la notification avec le code
-            // Envoyer le code de réinitialisation par WhatsApp
+            // Envoyer le code de rÃ©initialisation par WhatsApp
             if (!empty($user->phone)) {
-                $texteWhatsapp = "🔐 *Réinitialisation de Mot de passe*\n\n";
+                $texteWhatsapp = "ðŸ” *RÃ©initialisation de Mot de passe*\n\n";
                 $texteWhatsapp .= "Votre code secret est : *$code*\n";
                 $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
 
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                         'phone' => $user->phone,
                         'message' => $texteWhatsapp
                     ]);
@@ -1431,23 +1440,23 @@ class ProfesseurController extends Controller
                     \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Reset Code Prof) : ' . $reqEx->getMessage());
                 }
             } else {
-                \Illuminate\Support\Facades\Log::warning("PROF RESET CODE pour {$user->email}: $code (Numéro manquant)");
+                \Illuminate\Support\Facades\Log::warning("PROF RESET CODE pour {$user->email}: $code (NumÃ©ro manquant)");
             }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Code de réinitialisation envoyé avec succès.',
+                'message' => 'Code de rÃ©initialisation envoyÃ© avec succÃ¨s.',
                 'email' => $request->email,
             ]);
         } catch (\Exception $e) {
             \Log::error('Erreur envoi email: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'message' => 'Erreur lors de l\'envoi du code. Veuillez réessayer.'], 500);
+            return response()->json(['success' => false, 'message' => 'Erreur lors de l\'envoi du code. Veuillez rÃ©essayer.'], 500);
         }
     }
 
     /**
-     * Afficher le formulaire de vérification du code
+     * Afficher le formulaire de vÃ©rification du code
      */
     public function showVerifyCodeForm()
     {
@@ -1455,7 +1464,7 @@ class ProfesseurController extends Controller
     }
 
     /**
-     * Vérifier le code secret
+     * VÃ©rifier le code secret
      */
     public function verifyResetCode(Request $request)
     {
@@ -1470,7 +1479,7 @@ class ProfesseurController extends Controller
             ->first();
 
         if (! $resetCode) {
-            return response()->json(['success' => false, 'message' => 'Code invalide ou expiré.'], 400);
+            return response()->json(['success' => false, 'message' => 'Code invalide ou expirÃ©.'], 400);
         }
 
         // Code valide
@@ -1483,7 +1492,7 @@ class ProfesseurController extends Controller
     }
 
     /**
-     * Afficher le formulaire de réinitialisation
+     * Afficher le formulaire de rÃ©initialisation
      */
     public function showResetForm(Request $request)
     {
@@ -1491,21 +1500,21 @@ class ProfesseurController extends Controller
     }
 
     /**
-     * Réinitialiser le mot de passe
+     * RÃ©initialiser le mot de passe
      */
     /**
-     * Réinitialiser le mot de passe
+     * RÃ©initialiser le mot de passe
      */
     /**
-     * Réinitialiser le mot de passe (personal_code)
+     * RÃ©initialiser le mot de passe (personal_code)
      */
     /**
-     * Réinitialiser le personal_code (mot de passe)
+     * RÃ©initialiser le personal_code (mot de passe)
      */
     public function resetPassword(Request $request)
     {
-        \Log::info('=== DÉBUT RÉINITIALISATION ===');
-        \Log::info('Données reçues:', $request->all());
+        \Log::info('=== DÃ‰BUT RÃ‰INITIALISATION ===');
+        \Log::info('DonnÃ©es reÃ§ues:', $request->all());
 
         $request->validate([
             'email' => 'required|email',
@@ -1513,66 +1522,66 @@ class ProfesseurController extends Controller
             'personal_code' => ['required', 'confirmed', 'min:6'], // Ajout de confirmed et min
         ], [
             'personal_code.confirmed' => 'La confirmation du code personnel ne correspond pas.',
-            'personal_code.min' => 'Le code personnel doit contenir au moins 6 caractères.',
+            'personal_code.min' => 'Le code personnel doit contenir au moins 6 caractÃ¨res.',
         ]);
 
-        // Vérifier à nouveau le code
+        // VÃ©rifier Ã  nouveau le code
         $resetCode = PasswordResetCode::where('email', $request->email)
             ->where('code', $request->code)
             ->where('expires_at', '>', now())
             ->first();
 
-        \Log::info('Code de reset trouvé:', ['exists' => (bool) $resetCode]);
+        \Log::info('Code de reset trouvÃ©:', ['exists' => (bool) $resetCode]);
 
         if (! $resetCode) {
-            \Log::warning('Code invalide ou expiré');
+            \Log::warning('Code invalide ou expirÃ©');
 
-            return response()->json(['success' => false, 'message' => 'Code invalide ou expiré.'], 400);
+            return response()->json(['success' => false, 'message' => 'Code invalide ou expirÃ©.'], 400);
         }
 
         // Trouver l'utilisateur
         $user = Professeur::where('email', $request->email)->first();
-        \Log::info('Utilisateur trouvé:', ['exists' => (bool) $user, 'id' => $user?->id]);
+        \Log::info('Utilisateur trouvÃ©:', ['exists' => (bool) $user, 'id' => $user?->id]);
 
         if ($user) {
-            // Avant la mise à jour
-            \Log::info('Avant mise à jour - personal_code actuel:', ['current_code' => $user->personal_code]);
+            // Avant la mise Ã  jour
+            \Log::info('Avant mise Ã  jour - personal_code actuel:', ['current_code' => $user->personal_code]);
 
             try {
-                // Mettre à jour le personal_code
+                // Mettre Ã  jour le personal_code
                 $user->update([
                     'personal_code' => Hash::make($request->personal_code),
                 ]);
 
-                // Recharger l'utilisateur pour vérifier
+                // Recharger l'utilisateur pour vÃ©rifier
                 $user->refresh();
-                \Log::info('Après mise à jour - personal_code nouveau:', ['new_code' => $user->personal_code]);
+                \Log::info('AprÃ¨s mise Ã  jour - personal_code nouveau:', ['new_code' => $user->personal_code]);
 
-                // Vérifier si le hash correspond
+                // VÃ©rifier si le hash correspond
                 $isValid = Hash::check($request->personal_code, $user->personal_code);
-                \Log::info('Vérification hash:', ['is_valid' => $isValid]);
+                \Log::info('VÃ©rification hash:', ['is_valid' => $isValid]);
 
-                // Supprimer le code utilisé
+                // Supprimer le code utilisÃ©
                 PasswordResetCode::where('email', $request->email)->delete();
 
-                \Log::info('=== RÉINITIALISATION RÉUSSIE ===');
+                \Log::info('=== RÃ‰INITIALISATION RÃ‰USSIE ===');
 
-                // Rediriger avec un message de succès
+                // Rediriger avec un message de succÃ¨s
                 return response()->json([
                     'success' => true,
-                    'message' => 'Code personnel réinitialisé avec succès. Vous pouvez maintenant vous connecter.',
+                    'message' => 'Code personnel rÃ©initialisÃ© avec succÃ¨s. Vous pouvez maintenant vous connecter.',
                 ]);
 
             } catch (\Exception $e) {
-                \Log::error('Erreur lors de la mise à jour: '.$e->getMessage());
+                \Log::error('Erreur lors de la mise Ã  jour: '.$e->getMessage());
 
-                return response()->json(['success' => false, 'message' => 'Erreur lors de la mise à jour: '.$e->getMessage()], 500);
+                return response()->json(['success' => false, 'message' => 'Erreur lors de la mise Ã  jour: '.$e->getMessage()], 500);
             }
         }
 
-        \Log::error('Utilisateur non trouvé');
+        \Log::error('Utilisateur non trouvÃ©');
 
-        return response()->json(['success' => false, 'message' => 'Utilisateur non trouvé.'], 404);
+        return response()->json(['success' => false, 'message' => 'Utilisateur non trouvÃ©.'], 404);
     }
 
     /**
@@ -1584,20 +1593,20 @@ class ProfesseurController extends Controller
             'email' => 'required|email|exists:direction,email',
         ]);
 
-        // Vérifier si l'utilisateur existe
+        // VÃ©rifier si l'utilisateur existe
         $user = Direction::where('email', $request->email)->first();
 
         if (! $user) {
-            return response()->json(['success' => false, 'message' => 'Utilisateur non trouvé.'], 404);
+            return response()->json(['success' => false, 'message' => 'Utilisateur non trouvÃ©.'], 404);
         }
 
-        // Générer un nouveau code
+        // GÃ©nÃ©rer un nouveau code
         $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
         // Supprimer les anciens codes
         PasswordResetCode::where('email', $request->email)->delete();
 
-        // Créer le nouveau code
+        // CrÃ©er le nouveau code
         PasswordResetCode::create([
             'email' => $request->email,
             'code' => $code,
@@ -1606,14 +1615,14 @@ class ProfesseurController extends Controller
         ]);
 
         try {
-            // Envoyer le code de réinitialisation par WhatsApp
+            // Envoyer le code de rÃ©initialisation par WhatsApp
             if (!empty($user->phone)) {
-                $texteWhatsapp = "🔐 *Réinitialisation de Mot de passe*\n\n";
+                $texteWhatsapp = "ðŸ” *RÃ©initialisation de Mot de passe*\n\n";
                 $texteWhatsapp .= "Votre code secret est : *$code*\n";
                 $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
 
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                         'phone' => $user->phone,
                         'message' => $texteWhatsapp
                     ]);
@@ -1621,12 +1630,12 @@ class ProfesseurController extends Controller
                     \Illuminate\Support\Facades\Log::error('Erreur HTTP WhatsApp (Reset Code Prof) : ' . $reqEx->getMessage());
                 }
             } else {
-                \Illuminate\Support\Facades\Log::warning("PROF RESET CODE pour {$user->email}: $code (Numéro manquant)");
+                \Illuminate\Support\Facades\Log::warning("PROF RESET CODE pour {$user->email}: $code (NumÃ©ro manquant)");
             }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Nouveau code envoyé avec succès.',
+                'message' => 'Nouveau code envoyÃ© avec succÃ¨s.',
             ]);
         } catch (\Exception $e) {
             \Log::error('Erreur envoi email: '.$e->getMessage());
@@ -1639,13 +1648,13 @@ class ProfesseurController extends Controller
     {
         $professeur = Auth::user();
 
-        // Charger toutes les matières que le prof enseigne dans ses classes
+        // Charger toutes les matiÃ¨res que le prof enseigne dans ses classes
         $professeur->load(['classes.matieres' => function ($q) use ($professeur) {
             $q->wherePivot('professeur_id', $professeur->id);
         }]);
 
-        // Récupérer les ID des matières enseignées par ce prof
-        // (En général une seule, mais supporte le multi-matière)
+        // RÃ©cupÃ©rer les ID des matiÃ¨res enseignÃ©es par ce prof
+        // (En gÃ©nÃ©ral une seule, mais supporte le multi-matiÃ¨re)
         $matiereIds = collect();
         foreach ($professeur->classes as $classe) {
             foreach ($classe->matieres as $matiere) {
@@ -1653,14 +1662,14 @@ class ProfesseurController extends Controller
             }
         }
         
-        // Fallback: Si pas de matière pivot, utiliser la matière du profil
+        // Fallback: Si pas de matiÃ¨re pivot, utiliser la matiÃ¨re du profil
         if ($matiereIds->isEmpty() && $professeur->matiere_id) {
             $matiereIds->push($professeur->matiere_id);
         }
 
         $cahiers = CahierTexte::whereIn('classe_id', $professeur->classes->pluck('id'))
             ->where('professeur_id', $professeur->id)
-            // FILTRE STRICT: Seulement pour les matières du prof
+            // FILTRE STRICT: Seulement pour les matiÃ¨res du prof
             ->whereIn('matiere_id', $matiereIds->unique()) 
             ->with(['classe' => function ($q) {
                 $q->select('id', 'nom');
@@ -1692,10 +1701,10 @@ class ProfesseurController extends Controller
         ]);
 
         if (! $professeur->classes->contains($request->classe_id)) {
-            return response()->json(['success' => false, 'message' => 'Non autorisé pour cette classe.'], 403);
+            return response()->json(['success' => false, 'message' => 'Non autorisÃ© pour cette classe.'], 403);
         }
 
-        // Déduction stricte de la matière
+        // DÃ©duction stricte de la matiÃ¨re
         $matiere_id = $professeur->classes()
             ->where('classe_id', $request->classe_id)
             ->first()
@@ -1703,13 +1712,13 @@ class ProfesseurController extends Controller
             ->matiere_id ?? $professeur->matiere_id;
 
         if (!$matiere_id) {
-             return response()->json(['success' => false, 'message' => 'Aucune matière associée.'], 422);
+             return response()->json(['success' => false, 'message' => 'Aucune matiÃ¨re associÃ©e.'], 422);
         }
 
         $cahier = CahierTexte::create([
             'classe_id' => $request->classe_id,
             'professeur_id' => $professeur->id,
-            'matiere_id' => $matiere_id, // ENFIN STRICTEMENT LIÉ
+            'matiere_id' => $matiere_id, // ENFIN STRICTEMENT LIÃ‰
             'date_cours' => $request->date_cours,
             'duree_cours' => $request->duree_cours,
             'heure_debut' => $request->heure_debut,
@@ -1730,16 +1739,16 @@ class ProfesseurController extends Controller
                     $tuteurs->push($tuteur);
                 }
 
-                $texteWhatsapp = "📚 *Nouveau Devoir à faire*\n\n";
-                $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
-                $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n";
+                $texteWhatsapp = "ðŸ“š *Nouveau Devoir Ã  faire*\n\n";
+                $texteWhatsapp .= "Ã‰lÃ¨ve : *{$eleve->nom_complet}*\n";
+                $texteWhatsapp .= "MatiÃ¨re : *{$cahier->matiere->nom}*\n";
                 $texteWhatsapp .= "Pour le : *" . \Carbon\Carbon::parse($cahier->date_cours)->format('d/m/Y') . "*\n\n";
-                $texteWhatsapp .= "Travail à faire : _{$cahier->travail_a_faire}_";
+                $texteWhatsapp .= "Travail Ã  faire : _{$cahier->travail_a_faire}_";
 
                 // --- WHATSAPP REPETITEUR ---
                 if (!empty($eleve->repetiteur_whatsapp)) {
                     try {
-                        \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                        \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                             'phone' => $eleve->repetiteur_whatsapp,
                             'message' => $texteWhatsapp
                         ]);
@@ -1752,7 +1761,7 @@ class ProfesseurController extends Controller
                 foreach ($eleve->tuteurs as $tuteur) {
                     if (!empty($tuteur->telephone)) {
                         try {
-                            \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                            \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                                 'phone' => $tuteur->telephone,
                                 'message' => $texteWhatsapp
                             ]);
@@ -1768,7 +1777,7 @@ class ProfesseurController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Cahier de texte enregistré avec succès.',
+            'message' => 'Cahier de texte enregistrÃ© avec succÃ¨s.',
             'cahier' => $cahier,
         ]);
     }
@@ -1811,15 +1820,15 @@ class ProfesseurController extends Controller
                 $tuteur->notify(new \App\Notifications\ExerciceNonFaitNotification($eleve, $cahier));
             }
 
-            $texteWhatsapp = "⚠️ *Alerte Exercice Non Fait*\n\n";
-            $texteWhatsapp .= "Élève : *{$eleve->nom_complet}*\n";
-            $texteWhatsapp .= "Matière : *{$cahier->matiere->nom}*\n\n";
-            $texteWhatsapp .= "L'élève n'a pas fait l'exercice demandé : _{$cahier->travail_a_faire}_. Merci de veiller à ce que cela soit fait.";
+            $texteWhatsapp = "âš ï¸ *Alerte Exercice Non Fait*\n\n";
+            $texteWhatsapp .= "Ã‰lÃ¨ve : *{$eleve->nom_complet}*\n";
+            $texteWhatsapp .= "MatiÃ¨re : *{$cahier->matiere->nom}*\n\n";
+            $texteWhatsapp .= "L'Ã©lÃ¨ve n'a pas fait l'exercice demandÃ© : _{$cahier->travail_a_faire}_. Merci de veiller Ã  ce que cela soit fait.";
 
             // --- WHATSAPP REPETITEUR ---
             if (!empty($eleve->repetiteur_whatsapp)) {
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                         'phone' => $eleve->repetiteur_whatsapp,
                         'message' => $texteWhatsapp
                     ]);
@@ -1832,7 +1841,7 @@ class ProfesseurController extends Controller
             foreach ($eleve->tuteurs as $tuteur) {
                 if (!empty($tuteur->telephone)) {
                     try {
-                        \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                        \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                             'phone' => $tuteur->telephone,
                             'message' => $texteWhatsapp
                         ]);
@@ -1845,7 +1854,7 @@ class ProfesseurController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Statut des exercices mis à jour et parents notifiés.',
+            'message' => 'Statut des exercices mis Ã  jour et parents notifiÃ©s.',
         ]);
     }
 
@@ -1855,23 +1864,23 @@ class ProfesseurController extends Controller
         $cahier = CahierTexte::find($id);
 
         if (! $cahier) {
-            return response()->json(['success' => false, 'message' => 'Entrée non trouvée.'], 404);
+            return response()->json(['success' => false, 'message' => 'EntrÃ©e non trouvÃ©e.'], 404);
         }
 
         if ($cahier->professeur_id !== $professeur->id) {
-            return response()->json(['success' => false, 'message' => 'Non autorisé.'], 403);
+            return response()->json(['success' => false, 'message' => 'Non autorisÃ©.'], 403);
         }
 
         $cahier->delete();
 
         return response()->json([
             'success' => true,
-            'message' => 'Entrée supprimée avec succès.',
+            'message' => 'EntrÃ©e supprimÃ©e avec succÃ¨s.',
         ]);
     }
 
     /**
-     * Récupérer les classes du professeur connecté
+     * RÃ©cupÃ©rer les classes du professeur connectÃ©
      */
     public function mesClasses()
     {
@@ -1879,13 +1888,13 @@ class ProfesseurController extends Controller
             $professeur = Auth::user();
 
             if (! $professeur) {
-                return response()->json(['success' => false, 'message' => 'Non authentifié'], 401);
+                return response()->json(['success' => false, 'message' => 'Non authentifiÃ©'], 401);
             }
 
-            // Charger les classes avec les relations nécessaires
+            // Charger les classes avec les relations nÃ©cessaires
             $classes = $professeur->classes()
                 ->with(['professeurPrincipal', 'matieres' => function ($q) {
-                    // Pour l'instant, toutes les matières de la classe sont utiles pour le contexte
+                    // Pour l'instant, toutes les matiÃ¨res de la classe sont utiles pour le contexte
                 }])
                 ->withCount('eleves')
                 ->orderBy('niveau')
@@ -1897,7 +1906,7 @@ class ProfesseurController extends Controller
                 'classes' => $classes,
             ]);
         } catch (\Exception $e) {
-            Log::error('Erreur récupération classes prof: '.$e->getMessage());
+            Log::error('Erreur rÃ©cupÃ©ration classes prof: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
@@ -1906,3 +1915,5 @@ class ProfesseurController extends Controller
         }
     }
 }
+
+

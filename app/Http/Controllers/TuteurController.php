@@ -241,7 +241,7 @@ class TuteurController extends Controller
             $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
 
             try {
-                \Illuminate\Support\Facades\Http::timeout(15)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
                     'phone' => $parent->telephone,
                     'message' => $texteWhatsapp
                 ]);
@@ -254,8 +254,7 @@ class TuteurController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Un code de réinitialisation a été envoyé à votre adresse email.',
-            'debug_code' => $code, // A RETIRER EN PROD
+            'message' => 'Un code de réinitialisation a été envoyé par WhatsApp au numéro associé à votre compte.',
         ]);
     }
 

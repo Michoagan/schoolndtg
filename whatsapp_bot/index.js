@@ -10,7 +10,7 @@ app.use(express.json());
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-        executablePath: '/usr/bin/google-chrome-stable',
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN || undefined,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -115,37 +115,54 @@ client.initialize().catch(err => {
 
 // Express Endpoint to send messages
 app.post('/send', async (req, res) => {
+    // Répondre rapidement pour éviter le timeout côté Laravel (15s)
+    const SEND_TIMEOUT_MS = 12000; // 12 secondes max
+
+    const sendWithTimeout = new Promise(async (resolve, reject) => {
+        try {
+            if (!isClientReady) {
+                return resolve({ success: false, error: "WhatsApp Client is not ready yet." });
+            }
+
+            const { phone, message } = req.body;
+
+            if (!phone || !message) {
+                return resolve({ success: false, error: "Phone number and message are required." });
+            }
+
+            // Formater le numéro
+            let formattedPhone = phone.replace(/[^0-9]/g, '');
+
+            if (formattedPhone.length === 10) {
+                formattedPhone = '229' + formattedPhone;
+            } else if (formattedPhone.length === 8) {
+                formattedPhone = '22901' + formattedPhone;
+            }
+
+            const chatId = `${formattedPhone}@c.us`;
+            console.log(`📤 Envoi vers: ${chatId}`);
+
+            // Envoyer directement sans vérifier isRegisteredUser (évite les blocages)
+            await client.sendMessage(chatId, message);
+            console.log(`✅ Message envoyé à ${formattedPhone}`);
+            resolve({ success: true, message: "WhatsApp message sent successfully." });
+
+        } catch (error) {
+            console.error("🚨 Error sending message:", error.message);
+            resolve({ success: false, error: error.toString() });
+        }
+    });
+
+    const timeout = new Promise((resolve) =>
+        setTimeout(() => resolve({ success: false, error: "Timeout: le bot a mis trop de temps à répondre." }), SEND_TIMEOUT_MS)
+    );
+
     try {
-        if (!isClientReady) {
-            return res.status(503).json({ success: false, error: "WhatsApp Client is not ready yet. Scan the QR code first." });
-        }
-
-        const { phone, message } = req.body;
-
-        if (!phone || !message) {
-            return res.status(400).json({ success: false, error: "Phone number and message are required." });
-        }
-
-        // WhatsApp expects numbers strictly without '+' and with '@c.us' appended
-        // Format input: "+228 90 00 00 00" or "22890000000"
-        let formattedPhone = phone.replace(/[^0-9]/g, '');
-        chatId = `${formattedPhone}@c.us`;
-
-        // Check if the number is registered on WhatsApp (optional but safe)
-        const isRegistered = await client.isRegisteredUser(chatId);
-        if (!isRegistered) {
-            return res.status(404).json({ success: false, error: "This phone number is not registered on WhatsApp." });
-        }
-
-        // Send the message
-        await client.sendMessage(chatId, message);
-        console.log(`📤 Message sent to ${formattedPhone}`);
-
-        res.json({ success: true, message: "WhatsApp message sent successfully." });
-
-    } catch (error) {
-        console.error("🚨 Error sending message:", error);
-        res.status(500).json({ success: false, error: error.toString() });
+        const result = await Promise.race([sendWithTimeout, timeout]);
+        const statusCode = result.success ? 200 : 500;
+        res.status(statusCode).json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.toString() });
     }
 });
 
