@@ -70,7 +70,7 @@ class ProfesseurController extends Controller
         // Envoyer la notification avec le code personnel EN CLAIR
         try {
             $professeur->notify(new ProfessorAccountCreatedNotification($professeur, $personalCode));
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Erreur d\'envoi d\'email lors de la création de professeur: ' . $e->getMessage());
         }
 
@@ -88,7 +88,7 @@ class ProfesseurController extends Controller
                     'phone' => $professeur->phone,
                     'message' => $texteWhatsapp
                 ]);
-            } catch (\Exception $reqEx) {
+            } catch (\Throwable $reqEx) {
                 Log::error('Erreur HTTP vers Bot WhatsApp (Création Prof) : ' . $reqEx->getMessage());
             }
         }
