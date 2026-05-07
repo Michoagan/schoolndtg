@@ -19,7 +19,8 @@ class CahierTexte extends Model
         'contenu_cours',
         'travail_a_faire',
         'observations',
-        'annee_scolaire'
+        'annee_scolaire',
+        'paiement_id',       // rattachement au bulletin de paie (null = non payé)
     ];
 
     protected $casts = [

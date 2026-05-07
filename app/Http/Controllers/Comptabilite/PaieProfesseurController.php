@@ -21,7 +21,9 @@ class PaieProfesseurController extends Controller
             ->with('professeurPrincipal:id,last_name,first_name')
             ->get();
             
-        $professeurs = Professeur::select('id', 'last_name', 'first_name', 'phone')->get();
+        $professeurs = Professeur::select('id', 'last_name', 'first_name', 'phone')
+            ->with('classes:id,nom,niveau,taux_horaire')
+            ->get();
         
         $personnel = Direction::select('id', 'last_name', 'first_name', 'role', 'salaire_base')
             ->where('is_active', true)
@@ -45,6 +47,7 @@ class PaieProfesseurController extends Controller
 
         DB::beginTransaction();
         try {
+            // Mettre à jour le taux horaire des classes
             if ($request->has('classes')) {
                 foreach($request->classes as $c) {
                     Classe::where('id', $c['id'])->update(['taux_horaire' => $c['taux_horaire']]);
@@ -137,71 +140,78 @@ class PaieProfesseurController extends Controller
         }
 
         $professeurs = $query->get();
-        $classes = Classe::all()->keyBy('id'); // Pour un accès rapide aux taux horaires
+        // Les taux horaires sont fixés par classe
+        $classes = Classe::all()->keyBy('id');
         $resultats = [];
 
         foreach ($professeurs as $prof) {
+            // Heures non payées du mois (paiement_id IS NULL)
             $heuresEffectuees = CahierTexte::where('professeur_id', $prof->id)
                 ->whereMonth('date_cours', $mois)
                 ->whereYear('date_cours', $annee)
+                ->whereNull('paiement_id')
                 ->get();
 
             $totalHeuresVol = 0;
             $montantHeures = 0;
             $montantPrimes = 0;
-            
-            $heuresParClasse = $heuresEffectuees->groupBy('classe_id');
-            $details_heures = [];
-            
-            // Primes mensuelles du professeur
+
+            // Primes mensuelles du professeur pour ce mois
             $primes = PrimeMensuelle::where('professeur_id', $prof->id)
                 ->where('mois', $mois)
                 ->where('annee', $annee)
                 ->get();
 
             if ($heuresEffectuees->isEmpty() && $primes->isEmpty()) {
-                continue; 
+                continue;
             }
 
-            foreach($heuresParClasse as $classeId => $coursList) {
+            $heuresParClasse = $heuresEffectuees->groupBy('classe_id');
+            $details_heures = [];
+
+            foreach ($heuresParClasse as $classeId => $coursList) {
                 $heures = $coursList->sum('duree_cours');
                 $totalHeuresVol += $heures;
-                $classe = isset($classes[$classeId]) ? $classes[$classeId] : null;
+
+                // Taux fixé sur la classe
+                $classe = $classes->get($classeId);
                 $tauxApplique = $classe ? $classe->taux_horaire : 0;
                 $nomClasse = $classe ? $classe->nom : 'Inconnue';
-                $montant = ($heures * $tauxApplique);
+
+                $montant = $heures * $tauxApplique;
                 $montantHeures += $montant;
-                
+
                 $details_heures[] = [
-                    'classe' => $nomClasse,
-                    'heures' => $heures,
-                    'taux' => $tauxApplique,
-                    'montant' => $montant
+                    'classe'  => $nomClasse,
+                    'heures'  => $heures,
+                    'taux'    => $tauxApplique,
+                    'montant' => $montant,
                 ];
             }
 
-            foreach($primes as $prime) {
+            // Somme des primes du professeur
+            foreach ($primes as $prime) {
                 $montantPrimes += $prime->montant;
             }
 
             $montantTotal = $montantHeures + $montantPrimes;
 
             $resultats[] = [
-                'professeur' => $prof,
-                'total_heures' => $totalHeuresVol,
-                'montant_heures' => $montantHeures,
-                'montant_primes' => $montantPrimes,
-                'montant_total'  => $montantTotal,
-                'details_heures' => $details_heures,
-                'primes_list' => $primes
+                'professeur'    => $prof,
+                'total_heures'  => $totalHeuresVol,
+                'montant_heures'=> $montantHeures,
+                'montant_primes'=> $montantPrimes,
+                'montant_total' => $montantTotal,
+                'details_heures'=> $details_heures,
+                'primes_list'   => $primes,
             ];
         }
 
         return response()->json([
             'success' => true,
-            'mois' => $mois,
-            'annee' => $annee,
-            'paies' => $resultats
+            'mois'    => $mois,
+            'annee'   => $annee,
+            'paies'   => $resultats,
         ]);
     }
 
@@ -219,10 +229,12 @@ class PaieProfesseurController extends Controller
         DB::beginTransaction();
         try {
             $professeurs = Professeur::all();
+            // Taux horaires fixés par classe
             $classes = Classe::all()->keyBy('id');
             $paiesEnvoyees = 0;
 
             foreach ($professeurs as $prof) {
+                // Uniquement les heures non encore payées ce mois
                 $heuresEffectuees = CahierTexte::where('professeur_id', $prof->id)
                     ->whereMonth('date_cours', $mois)
                     ->whereYear('date_cours', $annee)
@@ -230,28 +242,31 @@ class PaieProfesseurController extends Controller
                     ->get();
 
                 $totalHeuresVol = 0;
-                $montantHeures = 0;
-                $montantPrimes = 0;
-                
-                $heuresParClasse = $heuresEffectuees->groupBy('classe_id');
-                
+                $montantHeures  = 0;
+                $montantPrimes  = 0;
+
+                // Primes mensuelles du professeur
                 $primes = PrimeMensuelle::where('professeur_id', $prof->id)
                     ->where('mois', $mois)
                     ->where('annee', $annee)
                     ->get();
 
                 if ($heuresEffectuees->isEmpty() && $primes->isEmpty()) {
-                    continue; 
+                    continue;
                 }
 
-                foreach($heuresParClasse as $classeId => $coursList) {
+                $heuresParClasse = $heuresEffectuees->groupBy('classe_id');
+
+                foreach ($heuresParClasse as $classeId => $coursList) {
                     $heures = $coursList->sum('duree_cours');
                     $totalHeuresVol += $heures;
-                    $tauxApplique = isset($classes[$classeId]) ? $classes[$classeId]->taux_horaire : 0;
-                    $montantHeures += ($heures * $tauxApplique);
+
+                    // Taux fixé sur la classe
+                    $tauxApplique = $classes->has($classeId) ? $classes->get($classeId)->taux_horaire : 0;
+                    $montantHeures += $heures * $tauxApplique;
                 }
 
-                foreach($primes as $prime) {
+                foreach ($primes as $prime) {
                     $montantPrimes += $prime->montant;
                 }
 
@@ -261,17 +276,18 @@ class PaieProfesseurController extends Controller
                     $paiement = PaiementProfesseur::updateOrCreate(
                         ['professeur_id' => $prof->id, 'mois' => $mois, 'annee' => $annee],
                         [
-                            'total_heures' => $totalHeuresVol,
+                            'total_heures'   => $totalHeuresVol,
                             'montant_heures' => $montantHeures,
                             'montant_primes' => $montantPrimes,
-                            'montant_total' => $montantTotal,
-                            'statut' => 'paye',
-                            'date_paiement' => now()
+                            'montant_total'  => $montantTotal,
+                            'statut'         => 'paye',
+                            'date_paiement'  => now(),
                         ]
                     );
 
+                    // Marquer les heures comme payées
                     CahierTexte::whereIn('id', $heuresEffectuees->pluck('id'))->update([
-                        'paiement_id' => $paiement->id
+                        'paiement_id' => $paiement->id,
                     ]);
 
                     $paiesEnvoyees++;
@@ -280,7 +296,7 @@ class PaieProfesseurController extends Controller
 
             DB::commit();
             return response()->json([
-                'success' => true, 
+                'success' => true,
                 'message' => "$paiesEnvoyees fiches de paie validées et envoyées aux professeurs."
             ]);
         } catch (\Exception $e) {

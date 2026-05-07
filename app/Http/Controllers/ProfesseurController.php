@@ -79,6 +79,7 @@ class ProfesseurController extends Controller
             $texteWhatsapp = "Bienvenue À NDTG, Professeur {$professeur->first_name} {$professeur->last_name} !\n\n";
             $texteWhatsapp .= "Votre compte a été créé avec succès.\n";
             $texteWhatsapp .= "Vos identifiants :\n";
+            $texteWhatsapp .= "- Matière : {$professeur->matiere}\n";
             $texteWhatsapp .= "- Email : {$professeur->email}\n";
             $texteWhatsapp .= "- Code personnel : {$personalCode}\n\n";
             $texteWhatsapp .= "Veuillez conserver ce code précieusement. Il vous servira pour vous connecter à l'application.";
@@ -507,7 +508,9 @@ class ProfesseurController extends Controller
                 'eleves_count' => $professeur->classes->sum(function ($classe) {
                     return $classe->eleves->count();
                 }),
-                'cours_semaine' => \App\Models\EmploiDuTemps::where('professeur_id', $professeur->id)->count(),
+                'cours_semaine' => \App\Models\CahierTexte::where('professeur_id', $professeur->id)
+                    ->whereBetween('date_cours', [now()->startOfWeek(), now()->endOfWeek()])
+                    ->sum('duree_cours'),
             ];
 
             // RÃ©cupÃ©rer les communiquÃ©s rÃ©cents (GÃ©nÃ©ral ou Professeurs)
@@ -606,26 +609,30 @@ class ProfesseurController extends Controller
             $montantEstime = 0;
             
             $heuresParClasse = $heuresEffectuees->groupBy('classe_id');
-            $tauxConfigures = \App\Models\TauxHoraire::where('professeur_id', $professeur->id)->get();
+            // Taux horaires fixés par classe (identique à la comptabilité)
+            $classes = \App\Models\Classe::all()->keyBy('id');
 
             foreach($heuresParClasse as $classeId => $coursList) {
                 $heures = $coursList->sum('duree_cours');
                 $totalHeuresVol += $heures;
 
-                $tauxSpecifique = $tauxConfigures->firstWhere('classe_id', $classeId);
-                $tauxGlobal = $tauxConfigures->firstWhere('classe_id', null);
-                $tauxApplique = $tauxSpecifique ? $tauxSpecifique->taux_horaire : ($tauxGlobal ? $tauxGlobal->taux_horaire : 0);
-                
+                $tauxApplique = $classes->has($classeId) ? $classes->get($classeId)->taux_horaire : 0;
                 $montantEstime += ($heures * $tauxApplique);
             }
 
-            // Ajouter les primes fixes Ã  l'estimation
-            foreach($tauxConfigures as $tc) {
-                $montantEstime += $tc->prime_mensuelle;
+            // Ajouter les primes mensuelles du professeur
+            $primes = \App\Models\PrimeMensuelle::where('professeur_id', $professeur->id)
+                ->where('mois', $moisActuel)
+                ->where('annee', $anneeActuelle)
+                ->get();
+                
+            foreach($primes as $prime) {
+                $montantEstime += $prime->montant;
             }
 
             return response()->json([
                 'success' => true,
+                'professeur' => $professeur,
                 'paiements' => $paiements,
                 'heures_non_payees' => [
                     'total_heures' => $totalHeuresVol,
@@ -818,7 +825,12 @@ class ProfesseurController extends Controller
     {
         if (!$anneeScolaire) $anneeScolaire = \App\Models\Setting::getCurrentAnneeScolaire();
         try {
-            // RÃ©cupÃ©rer les notes de l'Ã©lÃ¨ve
+            $eleve     = \App\Models\Eleve::find($eleveId);
+            $matiere   = \App\Models\Matiere::find($matiereId);
+            $classe    = \App\Models\Classe::find($classeId);
+            $effectif  = \App\Models\Eleve::where('classe_id', $classeId)->count();
+
+            // Notes de l'eleve (par trimestre)
             $notesEleve = Note::where('eleve_id', $eleveId)
                 ->where('classe_id', $classeId)
                 ->where('matiere_id', $matiereId)
@@ -827,167 +839,128 @@ class ProfesseurController extends Controller
                 ->get()
                 ->keyBy('trimestre');
 
-            if ($notesEleve->isEmpty()) {
-                return null;
-            }
+            if ($notesEleve->isEmpty()) return null;
 
-            // RÃ©cupÃ©rer toutes les notes de la classe pour calculer les moyennes par devoir/interro
+            // Toutes les notes de la classe (pour comparaison)
             $notesClasse = Note::where('classe_id', $classeId)
                 ->where('matiere_id', $matiereId)
                 ->where('annee_scolaire', $anneeScolaire)
                 ->get()
                 ->groupBy('trimestre');
 
-            $labels = [];
-            $dataEleve = [];
-            $dataClasse = [];
-            $statistiquesNotes = [];
-
-            // DÃ©finition de la structure des Ã©valuations
+            // Evaluations selon le type
             $evaluations_all = [
-                'premier_interro' => 'I1',
-                'deuxieme_interro' => 'I2',
-                'troisieme_interro' => 'I3',
-                'quatrieme_interro' => 'I4',
-                'premier_devoir' => 'D1',
-                'deuxieme_devoir' => 'D2',
-                'moyenne_trimestrielle' => 'Moy'
+                'premier_interro'   => 'I1', 'deuxieme_interro'  => 'I2',
+                'troisieme_interro' => 'I3', 'quatrieme_interro' => 'I4',
+                'premier_devoir'    => 'D1', 'deuxieme_devoir'   => 'D2',
+                'moyenne_trimestrielle' => 'Moy',
             ];
+            $evaluations = match($type) {
+                'interro'     => array_filter($evaluations_all, fn($k) => str_contains($k, 'interro'), ARRAY_FILTER_USE_KEY),
+                'devoir'      => array_filter($evaluations_all, fn($k) => str_contains($k, 'devoir'), ARRAY_FILTER_USE_KEY),
+                'trimestrielle', 'generale' => ['moyenne_trimestrielle' => 'Moy'],
+                default       => $evaluations_all,
+            };
 
-            $evaluations = [];
-            if ($type === 'interro') {
-                $evaluations = [
-                    'premier_interro' => 'I1',
-                    'deuxieme_interro' => 'I2',
-                    'troisieme_interro' => 'I3',
-                    'quatrieme_interro' => 'I4',
-                ];
-            } elseif ($type === 'devoir') {
-                $evaluations = [
-                    'premier_devoir' => 'D1',
-                    'deuxieme_devoir' => 'D2',
-                ];
-            } elseif ($type === 'trimestrielle' || $type === 'generale') {
-                $evaluations = [
-                    'moyenne_trimestrielle' => 'Moy'
-                ];
-            } else {
-                $evaluations = $evaluations_all;
-            }
+            $labels = []; $dataEleve = []; $dataClasse = [];
+            $statistiquesNotes = []; $parTrimestre = []; $notesDetail = [];
 
             foreach ([1, 2, 3] as $trimestre) {
-                $noteEleve = $notesEleve->get($trimestre);
+                $noteEleve        = $notesEleve->get($trimestre);
                 $notesDuTrimestre = $notesClasse->get($trimestre);
 
-                // Si pas de donnÃ©es pour ce trimestre (ni Ã©lÃ¨ve, ni classe), on saute
-                if (! $noteEleve && (! $notesDuTrimestre || $notesDuTrimestre->isEmpty())) {
-                    continue;
+                if (!$noteEleve && (!$notesDuTrimestre || $notesDuTrimestre->isEmpty())) continue;
+
+                // Rang dans la classe pour ce trimestre
+                $rangTrimestre = null;
+                if ($notesDuTrimestre && $notesDuTrimestre->isNotEmpty()) {
+                    $moyennesTri = $notesDuTrimestre->sortByDesc('moyenne_trimestrielle')->values();
+                    $rangTrimestre = $moyennesTri->search(fn($n) => $n->eleve_id == $eleveId) + 1;
                 }
+
+                $moyTri = $noteEleve ? round(floatval($noteEleve->moyenne_trimestrielle), 2) : null;
+                $moyClasse = $notesDuTrimestre ? round($notesDuTrimestre->avg('moyenne_trimestrielle'), 2) : null;
+
+                $parTrimestre[] = [
+                    'trimestre'            => $trimestre,
+                    'moyenne_trimestrielle'=> $moyTri,
+                    'moyenne_classe'       => $moyClasse,
+                    'rang_trimestre'       => $rangTrimestre,
+                ];
 
                 foreach ($evaluations as $champ => $labelCourt) {
-                    $valeurEleve = $noteEleve ? $noteEleve->$champ : null;
-                    
-                    // Calcul moyenne classe pour ce champ spÃ©cifique
-                    $moyenneClasse = 0;
-                    if ($notesDuTrimestre && $notesDuTrimestre->isNotEmpty()) {
-                        $avg = $notesDuTrimestre->avg($champ);
-                        $moyenneClasse = $avg ? round($avg, 2) : 0;
-                    }
+                    $valeurEleve  = $noteEleve ? $noteEleve->$champ : null;
+                    $moyenneClasse = $notesDuTrimestre ? round($notesDuTrimestre->avg($champ), 2) : 0;
 
-                    // On n'ajoute au graphique que les notes que l'Ã©lÃ¨ve a rÃ©ellement composÃ©es
                     if ($valeurEleve !== null) {
-                        $labels[] = "T$trimestre $labelCourt";
-                        $dataEleve[] = floatval($valeurEleve); 
-                        $dataClasse[] = floatval($moyenneClasse);
-                        $statistiquesNotes[] = $valeurEleve;
+                        $labels[]    = "T$trimestre $labelCourt";
+                        $dataEleve[] = floatval($valeurEleve);
+                        $dataClasse[]= floatval($moyenneClasse);
+                        $statistiquesNotes[] = floatval($valeurEleve);
+                        $notesDetail["T$trimestre $labelCourt"] = floatval($valeurEleve);
                     }
                 }
             }
 
-            // Calculer la vraie moyenne gÃ©nÃ©rale (basÃ©e sur les moyennes trimestrielles)
-            $moyennesTrimestrielles = [];
-            foreach ($notesEleve as $note) {
-                if ($note->moyenne_trimestrielle > 0) {
-                    $moyennesTrimestrielles[] = $note->moyenne_trimestrielle;
-                }
-            }
-            $vraiMoyenneGenerale = count($moyennesTrimestrielles) > 0 
-                ? round(array_sum($moyennesTrimestrielles) / count($moyennesTrimestrielles), 2) 
-                : (count($statistiquesNotes) > 0 ? round(array_sum($statistiquesNotes) / count($statistiquesNotes), 2) : 0);
+            // Statistiques globales
+            $moyennesTrimestrielles = $notesEleve->filter(fn($n) => $n->moyenne_trimestrielle > 0)->pluck('moyenne_trimestrielle');
+            $moyenneGenerale = $moyennesTrimestrielles->isNotEmpty()
+                ? round($moyennesTrimestrielles->avg(), 2)
+                : (count($statistiquesNotes) > 0 ? round(array_sum($statistiquesNotes)/count($statistiquesNotes), 2) : 0);
 
-            // Calculer les statistiques globales
-            $stats = [];
-            if (! empty($statistiquesNotes)) {
-                $stats = [
-                    'moyenne_generale' => $vraiMoyenneGenerale,
-                    'meilleure_note' => max($statistiquesNotes),
-                    'pire_note' => min($statistiquesNotes),
-                    'nombre_notes' => count($statistiquesNotes),
-                    'tendance' => $this->calculerTendance($dataEleve),
-                ];
-            } else {
-                 // Fallback stats minimales
-                $stats = [
-                    'moyenne_generale' => 0,
-                    'meilleure_note' => 0,
-                    'pire_note' => 0,
-                    'nombre_notes' => 0,
-                    'tendance' => 'stable',
-                ];
-            }
+            // Rang global
+            $toutesLesNotes = Note::where('classe_id', $classeId)->where('matiere_id', $matiereId)
+                ->where('annee_scolaire', $anneeScolaire)
+                ->selectRaw('eleve_id, AVG(moyenne_trimestrielle) as moy')
+                ->groupBy('eleve_id')->orderByDesc('moy')->get();
+            $rangGlobal = $toutesLesNotes->search(fn($n) => $n->eleve_id == $eleveId) + 1;
+            $moyenneClasseGlobale = round($toutesLesNotes->avg('moy'), 2);
 
-            // GÃ©nÃ©rer les recommandations
+            $tauxReussite = count($statistiquesNotes) > 0
+                ? round(count(array_filter($statistiquesNotes, fn($n) => $n >= 10)) / count($statistiquesNotes) * 100)
+                : 0;
+
+            $stats = [
+                'nom_eleve'         => $eleve?->nom_complet ?? 'Eleve',
+                'classe'            => $classe?->nom ?? '',
+                'matiere'           => $matiere?->nom ?? '',
+                'moyenne_generale'  => $moyenneGenerale,
+                'rang'              => $rangGlobal ?: 'N/A',
+                'effectif_classe'   => $effectif,
+                'taux_reussite'     => $tauxReussite,
+                'ecart_vs_classe'   => round($moyenneGenerale - $moyenneClasseGlobale, 2),
+                'absences'          => 0,
+                'meilleure_note'    => count($statistiquesNotes) > 0 ? max($statistiquesNotes) : 0,
+                'pire_note'         => count($statistiquesNotes) > 0 ? min($statistiquesNotes) : 0,
+                'nombre_notes'      => count($statistiquesNotes),
+                'tendance'          => $this->calculerTendance($dataEleve),
+                'par_trimestre'     => $parTrimestre,
+                'notes_detail'      => $notesDetail,
+            ];
+
+            // Appel IA enrichi
             $aiService = app(\App\Services\AiService::class);
-            $matiereNom = \App\Models\Matiere::find($matiereId)->nom ?? 'MatiÃ¨re';
-            
-            $performances = [[
-                'matiere' => $matiereNom,
-                'moyenne_trimestrielle' => $stats['moyenne_generale'] ?? 0,
-            ]];
-            
-            $aiAdvice = $aiService->analyzeStudentGrades(
-                $stats['moyenne_generale'] ?? 0,
-                $performances,
-                0
-            );
-            
+            $aiAdvice  = $aiService->analyzeStudentFull($stats);
+
             $conseils = [];
-            if (!empty($aiAdvice) && $aiAdvice !== "L'analyse pÃ©dagogique n'a pas pu Ãªtre gÃ©nÃ©rÃ©e." && strpos($aiAdvice, "Conseil non disponible") === false) {
-                $conseils[] = [
-                    'type' => 'SynthÃ¨se PÃ©dagogique IA',
-                    'recommandations' => [$aiAdvice]
-                ];
+            if (!empty($aiAdvice) && strpos($aiAdvice, 'indisponible') === false && strpos($aiAdvice, 'manquante') === false) {
+                $conseils[] = ['type' => 'Synthese Pedagogique IA', 'recommandations' => [$aiAdvice]];
             } else {
-                $dataForRecos = ['statistiques' => $stats]; 
-                $recommandations = $this->genererRecommandations($dataForRecos);
-                
-                if (!empty($recommandations)) {
-                    $conseils[] = [
-                        'type' => 'Performance & Conseils',
-                        'recommandations' => $recommandations
-                    ];
-                }
+                $conseils[] = ['type' => 'Performance & Conseils', 'recommandations' => $this->genererRecommandations(['statistiques' => $stats])];
             }
-    
+
             return [
-                'labels' => $labels,
-                'datasets' => [
-                    [
-                        'label' => 'Note Ã‰lÃ¨ve',
-                        'data' => $dataEleve,
-                        'borderColor' => '#4CAF50', // Green
-                    ],
-                    [
-                        'label' => 'Moyenne Classe',
-                        'data' => $dataClasse,
-                        'borderColor' => '#FFC107', // Amber
-                    ]
+                'labels'      => $labels,
+                'statistiques'=> $stats,
+                'datasets'    => [
+                    ['label' => 'Note eleve',     'data' => $dataEleve, 'borderColor' => '#4CAF50'],
+                    ['label' => 'Moyenne Classe', 'data' => $dataClasse, 'borderColor' => '#FFC107'],
                 ],
-                'conseils' => $conseils
+                'conseils' => $conseils,
             ];
 
         } catch (\Exception $e) {
-            Log::error('Erreur analyse notes Ã©lÃ¨ve: '.$e->getMessage());
+            Log::error('Erreur analyse notes eleve: ' . $e->getMessage());
             return null;
         }
     }
@@ -995,86 +968,108 @@ class ProfesseurController extends Controller
     private function getAnalyseNotesClasse($classeId, $matiereId, $anneeScolaire = null)
     {
         if (!$anneeScolaire) $anneeScolaire = \App\Models\Setting::getCurrentAnneeScolaire();
-        
+
         try {
-             // RÃ©cupÃ©rer les moyennes de classe par trimestre
-            $moyennes_classe = Note::where('classe_id', $classeId)
+            $matiere  = \App\Models\Matiere::find($matiereId);
+            $classe   = \App\Models\Classe::find($classeId);
+            $effectif = \App\Models\Eleve::where('classe_id', $classeId)->count();
+
+            // Toutes les notes de la classe
+            $toutesNotes = Note::where('classe_id', $classeId)
                 ->where('matiere_id', $matiereId)
                 ->where('annee_scolaire', $anneeScolaire)
-                ->select('trimestre', DB::raw('AVG(moyenne_trimestrielle) as moyenne'))
-                ->groupBy('trimestre')
-                ->orderBy('trimestre')
                 ->get();
 
-            if ($moyennes_classe->isEmpty()) {
-                return null;
+            if ($toutesNotes->isEmpty()) return null;
+
+            $labels = []; $dataValues = []; $parTrimestre = [];
+
+            foreach ([1, 2, 3] as $trimestre) {
+                $notesTri = $toutesNotes->where('trimestre', $trimestre);
+                if ($notesTri->isEmpty()) continue;
+
+                $moyennes = $notesTri->filter(fn($n) => $n->moyenne_trimestrielle > 0)->pluck('moyenne_trimestrielle');
+                if ($moyennes->isEmpty()) continue;
+
+                $moyClasse   = round($moyennes->avg(), 2);
+                $tauxReuss   = round($moyennes->filter(fn($m) => $m >= 10)->count() / $moyennes->count() * 100);
+                $ecartType   = round(sqrt($moyennes->map(fn($m) => pow($m - $moyClasse, 2))->avg()), 2);
+
+                $labels[]    = "Trimestre $trimestre";
+                $dataValues[]= $moyClasse;
+
+                $parTrimestre[] = [
+                    'trimestre'    => $trimestre,
+                    'moyenne'      => $moyClasse,
+                    'taux_reussite'=> $tauxReuss,
+                    'min'          => round($moyennes->min(), 2),
+                    'max'          => round($moyennes->max(), 2),
+                    'ecart_type'   => $ecartType,
+                    'nb_eleves'    => $moyennes->count(),
+                ];
             }
 
-            $labels = [];
-            $data_values = [];
+            if (empty($dataValues)) return null;
 
-            foreach ($moyennes_classe as $stat) {
-                $labels[] = "Trimestre {$stat->trimestre}";
-                $data_values[] = round($stat->moyenne, 2);
-            }
+            // Distribution des moyennes annuelles par eleve
+            $moyParEleve = $toutesNotes->filter(fn($n) => $n->moyenne_trimestrielle > 0)
+                ->groupBy('eleve_id')
+                ->map(fn($grp) => $grp->avg('moyenne_trimestrielle'));
 
+            $distribution = [
+                '0 - 5'    => $moyParEleve->filter(fn($m) => $m < 5)->count(),
+                '5 - 10'   => $moyParEleve->filter(fn($m) => $m >= 5 && $m < 10)->count(),
+                '10 - 14'  => $moyParEleve->filter(fn($m) => $m >= 10 && $m < 14)->count(),
+                '14 - 17'  => $moyParEleve->filter(fn($m) => $m >= 14 && $m < 17)->count(),
+                '17 - 20'  => $moyParEleve->filter(fn($m) => $m >= 17)->count(),
+            ];
+
+            $statsClasse = [
+                'classe'       => $classe?->nom ?? '',
+                'matiere'      => $matiere?->nom ?? '',
+                'effectif'     => $effectif,
+                'par_trimestre'=> $parTrimestre,
+                'distribution' => $distribution,
+            ];
+
+            // Appel IA enrichi
             $aiService = app(\App\Services\AiService::class);
-            $matiereNom = \App\Models\Matiere::find($matiereId)->nom ?? 'Inconnue';
-            $classeNom = \App\Models\Classe::find($classeId)->nom ?? 'Inconnue';
-            
-            $aiAdvice = $aiService->analyzeClassGrades($data_values, $matiereNom, $classeNom);
-            
+            $aiAdvice  = $aiService->analyzeClassFull($statsClasse);
+
             $conseils = [];
             if (!empty($aiAdvice) && strpos($aiAdvice, 'indisponible') === false) {
-                $conseils[] = [
-                    'type' => 'SynthÃ¨se PÃ©dagogique IA (Classe)',
-                    'recommandations' => [$aiAdvice]
-                ];
+                $conseils[] = ['type' => 'Synthese Pedagogique IA (Classe)', 'recommandations' => [$aiAdvice]];
             } else {
-                $conseils[] = [
-                    'type' => 'Vue d\'ensemble',
-                    'recommandations' => [
-                        'Ceci est une vue globale de la classe.',
-                        'SÃ©lectionnez un Ã©lÃ¨ve pour voir ses performances dÃ©taillÃ©es et obtenir des conseils personnalisÃ©s.'
-                    ]
-                ];
+                $conseils[] = ['type' => 'Vue d\'ensemble', 'recommandations' => [
+                    'Selectionnez un eleve pour voir ses performances detaillees et obtenir des conseils personnalises.'
+                ]];
             }
 
             return [
-                'labels' => $labels,
-                'datasets' => [
-                    [
-                        'label' => 'Moyenne Classe',
-                        'data' => $data_values,
-                        'borderColor' => '#2196F3', // Blue
-                    ]
+                'labels'      => $labels,
+                'statistiques'=> $statsClasse,
+                'datasets'    => [
+                    ['label' => 'Moyenne Classe', 'data' => $dataValues, 'borderColor' => '#2196F3'],
                 ],
-                'conseils' => $conseils
+                'conseils' => $conseils,
             ];
 
         } catch (\Exception $e) {
-            Log::error('Erreur analyse notes classe: '.$e->getMessage());
+            Log::error('Erreur analyse notes classe: ' . $e->getMessage());
             return null;
         }
     }
 
     private function calculerTendance($moyennes)
     {
-        if (count($moyennes) < 2) {
-            return 'stable';
-        }
-
-        $derniere = end($moyennes);
+        if (count($moyennes) < 2) return 'stable';
+        $derniere   = end($moyennes);
         $precedente = prev($moyennes);
-
-        if ($derniere > $precedente + 0.5) {
-            return 'progressif';
-        } elseif ($derniere < $precedente - 0.5) {
-            return 'regressif';
-        } else {
-            return 'stable';
-        }
+        if ($derniere > $precedente + 0.5)  return 'progressif';
+        if ($derniere < $precedente - 0.5)  return 'regressif';
+        return 'stable';
     }
+
 
     private function genererRecommandations($data)
     {
@@ -1703,6 +1698,29 @@ class ProfesseurController extends Controller
         if (! $professeur->classes->contains($request->classe_id)) {
             return response()->json(['success' => false, 'message' => 'Non autorisÃ© pour cette classe.'], 403);
         }
+
+        // -- V�rification EmploiDuTemps --------------------------------------
+        // Restriction : le prof ne peut saisir un cours que les jours o� il
+        // est planifi� dans l'emploi du temps pour cette classe.
+        $joursSemaine = [
+            1 => 'Lundi', 2 => 'Mardi', 3 => 'Mercredi',
+            4 => 'Jeudi', 5 => 'Vendredi', 6 => 'Samedi', 7 => 'Dimanche',
+        ];
+        $dateCours = \Carbon\Carbon::parse($request->date_cours);
+        $nomJour   = $joursSemaine[$dateCours->dayOfWeekIso] ?? null;
+
+        $aDuCoursCeJour = \App\Models\EmploiDuTemps::where('professeur_id', $professeur->id)
+            ->where('classe_id', $request->classe_id)
+            ->where('jour', $nomJour)
+            ->exists();
+
+        if (!$aDuCoursCeJour) {
+            return response()->json([
+                'success' => false,
+                'message' => "Vous n'avez pas de cours pr�vu dans cette classe le {$nomJour}. Saisie non autoris�e.",
+            ], 403);
+        }
+        // ---------------------------------------------------------------------
 
         // DÃ©duction stricte de la matiÃ¨re
         $matiere_id = $professeur->classes()

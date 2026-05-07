@@ -103,6 +103,20 @@ class NoteController extends Controller
             return response()->json(['error' => 'Vous n\'êtes pas assigné à cette classe.'], 403);
         }
 
+        // -- Restriction EmploiDuTemps : professeur autorise seulement ses jours de cours
+        if ($isProfesseur) {
+            $joursSemaine = [1=>'Lundi',2=>'Mardi',3=>'Mercredi',4=>'Jeudi',5=>'Vendredi',6=>'Samedi',7=>'Dimanche'];
+            $nomJour = $joursSemaine[now()->dayOfWeekIso] ?? null;
+            $aDuCours = \App\Models\EmploiDuTemps::where('professeur_id', $user->id)
+                ->where('classe_id', $request->classe_id)
+                ->where('jour', $nomJour)
+                ->exists();
+            if (!$aDuCours) {
+                return response()->json(['error' => "Saisie de notes non autorisee : vous n'avez pas cours dans cette classe le {$nomJour}."], 403);
+            }
+        }
+        // -------------------------------------------------------------------------
+
         $classe = Classe::findOrFail($request->classe_id);
         $matiere = Matiere::findOrFail($request->matiere_id);
 

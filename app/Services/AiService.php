@@ -12,35 +12,173 @@ class AiService
 
     public function __construct()
     {
-        $this->apiKey = env('GEMINI_API_KEY');
+        $this->apiKey  = env('GEMINI_API_KEY');
         $this->baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // 1. ANALYSE ÉLÈVE (fiche de bilan individuel pour le professeur)
+    // ─────────────────────────────────────────────────────────────────────────
+
     /**
-     * Analyse les notes (et absences) d'un élève pour fournir un conseil pédagogique aux parents.
+     * Analyse enrichie d'un élève : progression par trimestre,
+     * écart vs classe, taux de réussite, tendance.
+     *
+     * @param array $stats  Résultat de buildStudentStats()
      */
     public function analyzeStudentGrades(float $moyenneGenerale, array $performancesMatieres, int $absences = 0): string
     {
         if (empty($this->apiKey)) {
-            Log::warning("GEMINI_API_KEY non configurée. Impossible d'analyser le bulletin.");
+            Log::warning("GEMINI_API_KEY non configurée.");
             return "Conseil non disponible (Clé IA manquante).";
         }
 
-        $matieresString = "L'élève a une moyenne générale de {$moyenneGenerale}/20 avec {$absences} absences signalées. Voici le détail :\n";
+        // Compatibilité avec l'ancien appel simple
+        $matieresString = "Moyenne générale : {$moyenneGenerale}/20 | Absences : {$absences}\n";
         foreach ($performancesMatieres as $perf) {
-            $matieresString .= "- {$perf['matiere']}: Moyenne: " . ($perf['moyenne_trimestrielle'] ?? 'N/A') . "/20";
-            if (isset($perf['moyenne_interros'])) $matieresString .= " (Interros: {$perf['moyenne_interros']})";
-            if (isset($perf['moyenne_devoirs'])) $matieresString .= " (Devoirs: {$perf['moyenne_devoirs']})";
+            $matieresString .= "- {$perf['matiere']}: " . ($perf['moyenne_trimestrielle'] ?? 'N/A') . "/20";
+            if (isset($perf['moyenne_interros']))  $matieresString .= " (Interros: {$perf['moyenne_interros']})";
+            if (isset($perf['moyenne_devoirs']))   $matieresString .= " (Devoirs: {$perf['moyenne_devoirs']})";
             $matieresString .= "\n";
         }
 
-        $prompt = "En tant que conseiller académique empathique dans un collège/lycée (Notre Dame Pro), rédige un bilan pédagogique court (3 à 4 phrases maximum, pas de tirets ni de listes). Analyse les notes suivantes pour en tirer les faiblesses principales, les points forts, et donne une recommandation claire (ex: suggérer s'il faut un répétiteur dans une matière spécifique si les résultats y sont alarmants, ou alerter sur les absences). Parle au parent de l'élève.\n\nDonnées de l'élève :\n" . $matieresString;
+        $prompt = <<<PROMPT
+Tu es un conseiller pédagogique expert dans un établissement scolaire (Notre Dame Pro).
+Analyse les données de cet élève et rédige un bilan COURT (3 à 4 phrases, pas de tirets ni listes) destiné au professeur.
+Identifie : (1) les points forts et faiblesses principales, (2) la tendance (progression ou régression), (3) une recommandation concrète (répétiteur, travail ciblé, encouragements).
+
+Données :
+$matieresString
+PROMPT;
 
         return $this->callGemini($prompt);
     }
 
     /**
-     * Analyse courte à intégrer directement dans un événement Push.
+     * Analyse enrichie avec contexte complet : par trimestre, rang, écart-type.
+     * À appeler depuis getAnalyseNotesEleve() avec le tableau $stats enrichi.
+     */
+    public function analyzeStudentFull(array $stats): string
+    {
+        if (empty($this->apiKey)) return "Conseil non disponible (Clé IA manquante).";
+
+        $nom       = $stats['nom_eleve']      ?? 'l\'élève';
+        $classe    = $stats['classe']         ?? '';
+        $matiere   = $stats['matiere']        ?? '';
+        $moy       = $stats['moyenne_generale'] ?? 0;
+        $rang      = $stats['rang']           ?? 'N/A';
+        $effectif  = $stats['effectif_classe'] ?? '?';
+        $absences  = $stats['absences']       ?? 0;
+        $tauxReuss = $stats['taux_reussite']  ?? 0;
+        $ecartMoy  = $stats['ecart_vs_classe'] ?? 0;
+        $signe     = $ecartMoy >= 0 ? '+' : '';
+
+        // Progression par trimestre
+        $progressionTxt = '';
+        foreach ($stats['par_trimestre'] ?? [] as $t) {
+            $progressionTxt .= "  T{$t['trimestre']}: Moy={$t['moyenne_trimestrielle']}/20";
+            if (isset($t['moyenne_classe'])) $progressionTxt .= " (Classe: {$t['moyenne_classe']}/20)";
+            if (isset($t['rang_trimestre'])) $progressionTxt .= " [Rang {$t['rang_trimestre']}/{$effectif}]";
+            $progressionTxt .= "\n";
+        }
+
+        // Notes individuelles
+        $notesTxt = '';
+        foreach ($stats['notes_detail'] ?? [] as $label => $val) {
+            $notesTxt .= "  $label: $val/20\n";
+        }
+
+        $prompt = <<<PROMPT
+Tu es un conseiller pédagogique expert (Notre Dame Pro, {$classe}).
+Analyse les données de l'élève **{$nom}** en **{$matiere}** et rédige un bilan destiné au **professeur**.
+Format attendu : 3 à 4 phrases SANS tirets ni listes. Commence directement par l'analyse.
+Inclus : tendance générale (hausse/baisse), points critiques (interros vs devoirs), classement, et 1 recommandation pédagogique précise.
+
+📊 DONNÉES CLÉS :
+- Moyenne générale : {$moy}/20
+- Rang dans la classe : {$rang}/{$effectif}
+- Taux de réussite (≥10/20) : {$tauxReuss}%
+- Écart vs moyenne classe : {$signe}{$ecartMoy} pts
+- Absences signalées : {$absences}
+
+📈 PROGRESSION PAR TRIMESTRE :
+{$progressionTxt}
+📝 DÉTAIL DES NOTES :
+{$notesTxt}
+PROMPT;
+
+        return $this->callGemini($prompt);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2. ANALYSE CLASSE (vision globale pour le professeur)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Analyse enrichie d'une classe entière avec distribution et tendance.
+     */
+    public function analyzeClassGrades(array $moyennesTrimestrielles, string $matiereNom, string $classeNom): string
+    {
+        if (empty($this->apiKey)) return "Analyse globale IA indisponible.";
+
+        $dataString = implode(', ', array_map(
+            fn($i, $v) => "T" . ($i + 1) . ": {$v}/20",
+            array_keys($moyennesTrimestrielles),
+            $moyennesTrimestrielles
+        ));
+
+        $prompt = "En tant que conseiller pédagogique expert, analyse le comportement de la classe **{$classeNom}** en **{$matiereNom}**.\nMoyennes trimestrielles : {$dataString}.\nRédige 2 phrases directes (sans salutation, sans guillemets) adressées au professeur : identifie la tendance (progression/régression/stagnation) et propose 1 action pédagogique concrète.";
+
+        return $this->callGemini($prompt);
+    }
+
+    /**
+     * Analyse enrichie classe avec distribution complète des résultats.
+     */
+    public function analyzeClassFull(array $stats): string
+    {
+        if (empty($this->apiKey)) return "Analyse globale IA indisponible.";
+
+        $classe   = $stats['classe']   ?? '';
+        $matiere  = $stats['matiere']  ?? '';
+        $effectif = $stats['effectif'] ?? '?';
+
+        // Progression
+        $progressionTxt = '';
+        foreach ($stats['par_trimestre'] ?? [] as $t) {
+            $progressionTxt .= "  T{$t['trimestre']}: Moy={$t['moyenne']}/20";
+            $progressionTxt .= " | Taux réussite: {$t['taux_reussite']}%";
+            $progressionTxt .= " | Min: {$t['min']}/20 Max: {$t['max']}/20";
+            $progressionTxt .= " | Écart-type: {$t['ecart_type']}\n";
+        }
+
+        // Distribution des moyennes annuelles
+        $distTxt = '';
+        foreach ($stats['distribution'] ?? [] as $tranche => $nb) {
+            $distTxt .= "  {$tranche}: {$nb} élèves\n";
+        }
+
+        $prompt = <<<PROMPT
+Tu es un conseiller pédagogique expert (Notre Dame Pro, classe **{$classe}**).
+Analyse les performances globales en **{$matiere}** et rédige un rapport COURT (4 à 5 phrases, sans tirets) destiné au **professeur**.
+Inclus : (1) évolution trimestre par trimestre, (2) points d'inquiétude (taux d'échec, écart-type élevé), (3) 2 recommandations pédagogiques concrètes adaptées au niveau observé.
+
+👥 CLASSE : {$effectif} élèves
+📈 RÉSULTATS PAR TRIMESTRE :
+{$progressionTxt}
+📊 DISTRIBUTION DES MOYENNES (annuelles) :
+{$distTxt}
+PROMPT;
+
+        return $this->callGemini($prompt);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 3. AUTRES FONCTIONS IA
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Commentaire court pour notification push lors d'une nouvelle note.
      */
     public function generatePushAlertForNewGrade(string $matiere, float $nouvelleNote, float $moyenneAncienne = null, string $role = 'parent'): string
     {
@@ -48,48 +186,33 @@ class AiService
 
         $prompt = "Un élève vient d'avoir une nouvelle note de {$nouvelleNote}/20 en {$matiere}. ";
         if ($moyenneAncienne !== null) {
-            $prompt .= "Sa moyenne précédente dans cette matière était de {$moyenneAncienne}/20. ";
+            $prompt .= "Sa moyenne précédente était de {$moyenneAncienne}/20. ";
         }
-        
+
         if ($role === 'professeur') {
             $prompt .= "Texte destiné au Professeur. Rédige une analyse stricte de 15 mots pour alerter sur le suivi de cet élève.";
         } else {
-            $prompt .= "Rédige en une seule phrase courte (max 15 mots) destinée à la notification du Parent. Fais un commentaire bienveillant si la note est bonne, ou une alerte encourageante/suggestion d'efforts.";
+            $prompt .= "Rédige en une seule phrase (max 15 mots) pour la notification du Parent. Bienveillant si bonne note, alerte encourageante sinon.";
         }
 
-        $aiComment = $this->callGemini($prompt);
-        return "Nouvelle note en {$matiere} : {$nouvelleNote}/20. " . $aiComment;
+        return "Nouvelle note en {$matiere} : {$nouvelleNote}/20. " . $this->callGemini($prompt);
     }
 
     /**
-     * [NOUVEAU - Phase 2] Analyse l'évolution d'une classe entière pour le Professeur
-     */
-    public function analyzeClassGrades(array $moyennesTrimestrielles, string $matiereNom, string $classeNom): string
-    {
-        if (empty($this->apiKey)) return "Analyse globale IA indisponible (Vérifiez la clé).";
-
-        $dataString = "Matière enseignés : {$matiereNom}\nClasse : {$classeNom}\nMoyennes globales trimestrielles de la classe : " . implode(', ', $moyennesTrimestrielles);
-        
-        $prompt = "En tant que conseiller pédagogique expert, analyse le comportement de cette classe à partir des moyennes. {$dataString}. Rédige 2 phrases directes très professionnelles (sans bonjour ni fioritures) adressées au professeur pour le conseiller ou l'alerter sur la dynamique de sa classe (progression, régression ou avertissement).";
-
-        return $this->callGemini($prompt);
-    }
-
-    /**
-     * [NOUVEAU - Phase 2] Assistant Censeur : Rédige une appréciation disciplinaire
+     * Appréciation disciplinaire (Censeur).
      */
     public function generateDisciplineAppreciation(string $eleveNom, array $motifs): string
     {
         if (empty($this->apiKey)) return "Appréciation IA indisponible. Veuillez saisir manuellement.";
 
         $motifsList = implode(', ', $motifs);
-        $prompt = "En tant que Censeur adjoint IA (assistant de discipline), rédige une très courte appréciation disciplinaire (1 à 2 phrases strictes mais professionnelles) pour le bulletin de l'élève {$eleveNom}. Les problèmes ou remarques signalés par le professeur sont : {$motifsList}. Ne mets pas de salutations ni de guillemets. Sois direct, formel et académique.";
+        $prompt = "En tant que Censeur adjoint IA, rédige une appréciation disciplinaire (1 à 2 phrases strictes) pour le bulletin de l'élève {$eleveNom}. Problèmes signalés : {$motifsList}. Sans salutation ni guillemets. Direct, formel, académique.";
 
         return $this->callGemini($prompt);
     }
 
     /**
-     * [NOUVEAU - Phase 3] Direction : Audit Qualité IA d'un professeur
+     * Audit qualité professeur (Direction).
      */
     public function evaluateTeacherPerformance(string $profNom, array $stats): string
     {
@@ -97,39 +220,34 @@ class AiService
 
         $statsJson = json_encode($stats, JSON_UNESCAPED_UNICODE);
 
-        $prompt = "Tu es un Consultant Exécutif en Stratégie RH Scolaire ET un Coach Pédagogique. Ton rôle est d'analyser les statistiques d'un enseignant ({$profNom}) pour le Directeur et le Censeur.
-Voici les données : {$statsJson}.
-Rédige ton audit en DEUX courts paragraphes :
-1. Stratégie RH (Ton formel et directif) : Identifie les forces (ex: taux de réussite) et les points critiques nécessitant une vigilance (ex: assiduité faible, retards cahiers).
-2. Coaching & Amélioration (Ton bienveillant et orienté solution) : Propose 1 ou 2 axes d'amélioration précis et constructifs pour aider le professeur à progresser.
-N'utilise pas de salutation, pas de guillemets, vas droit au but.";
+        $prompt = "Tu es un Consultant Exécutif en Stratégie RH Scolaire ET un Coach Pédagogique. Analyse les statistiques de l'enseignant ({$profNom}) pour le Directeur.\nDonnées : {$statsJson}.\nRédige DEUX courts paragraphes :\n1. Stratégie RH (formel) : forces et points critiques.\n2. Coaching (bienveillant) : 1 à 2 axes d'amélioration précis.\nSans salutation, sans guillemets.";
 
         return $this->callGemini($prompt);
     }
 
-    /**
-     * Méthode générique d'appel à l'API Gemini
-     */
+    // ─────────────────────────────────────────────────────────────────────────
+    // APPEL API GEMINI
+    // ─────────────────────────────────────────────────────────────────────────
+
     private function callGemini(string $prompt): string
     {
         try {
-            $response = Http::withoutVerifying()->withHeaders([
-                'Content-Type' => 'application/json',
-            ])->post("{$this->baseUrl}?key={$this->apiKey}", [
-                'contents' => [
-                    [
-                        'parts' => [
-                            ['text' => $prompt]
-                        ]
-                    ]
-                ]
-            ]);
+            $response = Http::withoutVerifying()
+                ->timeout(25)
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->post("{$this->baseUrl}?key={$this->apiKey}", [
+                    'contents' => [['parts' => [['text' => $prompt]]]],
+                    'generationConfig' => [
+                        'temperature'     => 0.4,
+                        'maxOutputTokens' => 400,
+                    ],
+                ]);
 
             if ($response->successful()) {
                 $data = $response->json();
                 if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
                     $text = $data['candidates'][0]['content']['parts'][0]['text'];
-                    return trim(str_replace(['**', '*'], '', $text));
+                    return trim(str_replace(['**', '*', '#'], '', $text));
                 }
             }
 
