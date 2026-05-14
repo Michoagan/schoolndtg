@@ -170,7 +170,7 @@ class DirectionController extends Controller
                 $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
 
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                         'phone' => $user->phone,
                         'message' => $texteWhatsapp
                     ]);
@@ -314,7 +314,7 @@ class DirectionController extends Controller
                 $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
 
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                         'phone' => $user->phone,
                         'message' => $texteWhatsapp
                     ]);

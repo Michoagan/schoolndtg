@@ -3,7 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Communique;
+use App\Models\Professeur;
+use App\Models\Tuteur;
+use App\Notifications\NouveauCommuniqueNotification;
+use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Validator;
 
 class CommuniqueController extends Controller
@@ -12,53 +17,68 @@ class CommuniqueController extends Controller
     {
         $communiques = Communique::orderBy('created_at', 'desc')->get();
         return response()->json([
-            'success' => true,
-            'communiques' => $communiques
+            'success'      => true,
+            'communiques'  => $communiques,
         ]);
     }
 
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'titre' => 'required|string|max:255',
+            'titre'   => 'required|string|max:255',
             'contenu' => 'required|string',
-            'type' => 'required|string|in:general,professeurs,eleves,parents',
+            'type'    => 'required|string|in:general,professeurs,eleves,parents',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
         $communique = Communique::create([
-            'titre' => $request->titre,
-            'contenu' => $request->contenu,
-            'type' => $request->type,
+            'titre'        => $request->titre,
+            'contenu'      => $request->contenu,
+            'type'         => $request->type,
             'is_published' => true,
             'published_at' => now(),
         ]);
 
-        // Envoi des notifications selon la cible
-        $notification = new \App\Notifications\NouveauCommuniqueNotification($communique);
+        // Préparer notification Firebase et message WhatsApp
+        $notification = new NouveauCommuniqueNotification($communique);
+        $waMsg        = WhatsAppService::msgCommunique($communique->titre, $communique->contenu);
 
+        // ── Parents ──────────────────────────────────────────────────────
         if (in_array($request->type, ['parents', 'general'])) {
-            $parents = \App\Models\Tuteur::all();
-            \Illuminate\Support\Facades\Notification::send($parents, $notification);
+            $parents = Tuteur::all();
+            Notification::send($parents, $notification);
+
+            foreach ($parents as $parent) {
+                $phone = $parent->telephone ?? '';
+                if (!empty($phone)) {
+                    WhatsAppService::send($phone, $waMsg);
+                }
+            }
         }
 
+        // ── Professeurs ──────────────────────────────────────────────────
         if (in_array($request->type, ['professeurs', 'general'])) {
-            $professeurs = \App\Models\Professeur::all();
-            \Illuminate\Support\Facades\Notification::send($professeurs, $notification);
-        }
+            $professeurs = Professeur::where('is_active', true)->get();
+            Notification::send($professeurs, $notification);
 
-        // On peut aussi rajouter 'eleves' si on veut
+            foreach ($professeurs as $prof) {
+                $phone = $prof->phone ?? '';
+                if (!empty($phone)) {
+                    WhatsAppService::send($phone, $waMsg);
+                }
+            }
+        }
 
         return response()->json([
-            'success' => true,
+            'success'    => true,
             'communique' => $communique,
-            'message' => 'Communiqué publié avec succès'
+            'message'    => 'Communiqué publié avec succès',
         ], 201);
     }
 
@@ -70,28 +90,28 @@ class CommuniqueController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'titre' => 'required|string|max:255',
+            'titre'   => 'required|string|max:255',
             'contenu' => 'required|string',
-            'type' => 'required|string|in:general,professeurs,eleves,parents',
+            'type'    => 'required|string|in:general,professeurs,eleves,parents',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
         $communique->update([
-            'titre' => $request->titre,
+            'titre'   => $request->titre,
             'contenu' => $request->contenu,
-            'type' => $request->type,
+            'type'    => $request->type,
         ]);
 
         return response()->json([
-            'success' => true,
+            'success'    => true,
             'communique' => $communique,
-            'message' => 'Communiqué mis à jour avec succès'
+            'message'    => 'Communiqué mis à jour avec succès',
         ]);
     }
 

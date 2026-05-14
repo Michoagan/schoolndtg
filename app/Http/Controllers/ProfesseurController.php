@@ -85,7 +85,7 @@ class ProfesseurController extends Controller
             $texteWhatsapp .= "Veuillez conserver ce code prÃ©cieusement. Il vous servira pour vous connecter Ã  l'application.";
 
             try {
-                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                     'phone' => $professeur->phone,
                     'message' => $texteWhatsapp
                 ]);
@@ -339,7 +339,7 @@ class ProfesseurController extends Controller
             // --- ENVOI WHATSAPP AUTOMATIQUE AU REPETITEUR ---
             if (!empty($eleve->repetiteur_whatsapp)) {
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                         'phone' => $eleve->repetiteur_whatsapp,
                         'message' => $texteWhatsapp
                     ]);
@@ -352,7 +352,7 @@ class ProfesseurController extends Controller
             foreach ($tuteurs as $tuteur) {
                 if (!empty($tuteur->telephone)) {
                     try {
-                        \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                        \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                             'phone' => $tuteur->telephone,
                             'message' => $texteWhatsapp
                         ]);
@@ -438,7 +438,7 @@ class ProfesseurController extends Controller
             $texteWhatsapp .= "Ce code est valide pour une courte durÃ©e. Ne le partagez avec personne.";
 
             try {
-                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                     'phone' => $professeur->phone,
                     'message' => $texteWhatsapp
                 ]);
@@ -1335,7 +1335,7 @@ class ProfesseurController extends Controller
                     // Envoi au rÃƒÂ©pÃƒÂ©titeur
                     if (!empty($eleve->repetiteur_whatsapp)) {
                         try {
-                            \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                            \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                                 'phone' => $eleve->repetiteur_whatsapp,
                                 'message' => $texteWhatsapp
                             ]);
@@ -1348,7 +1348,7 @@ class ProfesseurController extends Controller
                     foreach ($eleve->tuteurs as $tuteur) {
                         if (!empty($tuteur->telephone)) {
                             try {
-                                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                                     'phone' => $tuteur->telephone,
                                     'message' => $texteWhatsapp
                                 ]);
@@ -1427,7 +1427,7 @@ class ProfesseurController extends Controller
                 $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
 
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                         'phone' => $user->phone,
                         'message' => $texteWhatsapp
                     ]);
@@ -1617,7 +1617,7 @@ class ProfesseurController extends Controller
                 $texteWhatsapp .= "Ce code est valide pour 15 minutes. Ne le partagez avec personne.";
 
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                         'phone' => $user->phone,
                         'message' => $texteWhatsapp
                     ]);
@@ -1699,9 +1699,9 @@ class ProfesseurController extends Controller
             return response()->json(['success' => false, 'message' => 'Non autorisÃƒÂ© pour cette classe.'], 403);
         }
 
-        // -- Vérification EmploiDuTemps --------------------------------------
-        // Restriction : le prof ne peut saisir un cours que les jours où il
-        // est planifié dans l'emploi du temps pour cette classe.
+        // -- Vï¿½rification EmploiDuTemps --------------------------------------
+        // Restriction : le prof ne peut saisir un cours que les jours oï¿½ il
+        // est planifiï¿½ dans l'emploi du temps pour cette classe.
         $joursSemaine = [
             1 => 'Lundi', 2 => 'Mardi', 3 => 'Mercredi',
             4 => 'Jeudi', 5 => 'Vendredi', 6 => 'Samedi', 7 => 'Dimanche',
@@ -1717,7 +1717,7 @@ class ProfesseurController extends Controller
         if (!$aDuCoursCeJour) {
             return response()->json([
                 'success' => false,
-                'message' => "Vous n'avez pas de cours prévu dans cette classe le {$nomJour}. Saisie non autorisée.",
+                'message' => "Vous n'avez pas de cours prï¿½vu dans cette classe le {$nomJour}. Saisie non autorisï¿½e.",
             ], 403);
         }
         // ---------------------------------------------------------------------
@@ -1766,7 +1766,7 @@ class ProfesseurController extends Controller
                 // --- WHATSAPP REPETITEUR ---
                 if (!empty($eleve->repetiteur_whatsapp)) {
                     try {
-                        \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                        \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                             'phone' => $eleve->repetiteur_whatsapp,
                             'message' => $texteWhatsapp
                         ]);
@@ -1779,7 +1779,7 @@ class ProfesseurController extends Controller
                 foreach ($eleve->tuteurs as $tuteur) {
                     if (!empty($tuteur->telephone)) {
                         try {
-                            \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                            \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                                 'phone' => $tuteur->telephone,
                                 'message' => $texteWhatsapp
                             ]);
@@ -1846,7 +1846,7 @@ class ProfesseurController extends Controller
             // --- WHATSAPP REPETITEUR ---
             if (!empty($eleve->repetiteur_whatsapp)) {
                 try {
-                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                         'phone' => $eleve->repetiteur_whatsapp,
                         'message' => $texteWhatsapp
                     ]);
@@ -1859,7 +1859,7 @@ class ProfesseurController extends Controller
             foreach ($eleve->tuteurs as $tuteur) {
                 if (!empty($tuteur->telephone)) {
                     try {
-                        \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                        \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                             'phone' => $tuteur->telephone,
                             'message' => $texteWhatsapp
                         ]);

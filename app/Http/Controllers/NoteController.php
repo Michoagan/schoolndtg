@@ -21,12 +21,12 @@ class NoteController extends Controller
         $isDirection = $user instanceof \App\Models\Direction;
         $isAdmin = $user instanceof \App\Models\User;
 
-        // Vérifier que c'est bien un professeur ou une direction
+        // VÃ©rifier que c'est bien un professeur ou une direction
         if (! $isProfesseur && ! $isDirection && ! $isAdmin) {
-            return response()->json(['error' => 'Non autorisé'], 403);
+            return response()->json(['error' => 'Non autorisÃ©'], 403);
         }
 
-        // Charger les classes avec leurs matières enseignées par ce professeur si c'est un prof
+        // Charger les classes avec leurs matiÃ¨res enseignÃ©es par ce professeur si c'est un prof
         if ($isProfesseur) {
             $user->load(['classes' => function ($query) use ($user) {
                 $query->with(['matieres' => function ($q) use ($user) {
@@ -41,20 +41,20 @@ class NoteController extends Controller
         $eleves = collect();
         $notes_existantes = collect();
         
-        // Si une classe est sélectionnée
+        // Si une classe est sÃ©lectionnÃ©e
         if ($request->has('classe_id')) {
             $classe_selectionnee = Classe::find($request->classe_id);
             
-            // Déterminer la matière STRICTEMENT
+            // DÃ©terminer la matiÃ¨re STRICTEMENT
             if ($request->has('matiere_id')) {
                 $matiere = Matiere::find($request->matiere_id);
             }
         }
 
-        // Si tous les paramètres sont présents
+        // Si tous les paramÃ¨tres sont prÃ©sents
         if ($classe_selectionnee && $matiere && $request->has('trimestre')) {
 
-            // Charger les élèves de la classe par ordre alphabétique
+            // Charger les Ã©lÃ¨ves de la classe par ordre alphabÃ©tique
             $eleves = $classe_selectionnee->eleves()
                 ->orderBy('nom')
                 ->orderBy('prenom')
@@ -85,7 +85,7 @@ class NoteController extends Controller
         $isCenseur = ($user instanceof \App\Models\Direction && in_array($user->role, ['censeur', 'directeur'])) || $user instanceof \App\Models\User;
 
         if (! $isProfesseur && ! $isCenseur) {
-            return response()->json(['error' => 'Non autorisé'], 403);
+            return response()->json(['error' => 'Non autorisÃ©'], 403);
         }
 
         $request->validate([
@@ -98,9 +98,9 @@ class NoteController extends Controller
             'notes.*' => 'nullable|numeric|min:0|max:20',
         ]);
 
-        // Vérifier que le professeur a accès à cette classe et matière
+        // VÃ©rifier que le professeur a accÃ¨s Ã  cette classe et matiÃ¨re
         if ($isProfesseur && ! $user->classes->contains($request->classe_id)) {
-            return response()->json(['error' => 'Vous n\'êtes pas assigné à cette classe.'], 403);
+            return response()->json(['error' => 'Vous n\'Ãªtes pas assignÃ© Ã  cette classe.'], 403);
         }
 
         // -- Restriction EmploiDuTemps : professeur autorise seulement ses jours de cours
@@ -120,7 +120,7 @@ class NoteController extends Controller
         $classe = Classe::findOrFail($request->classe_id);
         $matiere = Matiere::findOrFail($request->matiere_id);
 
-        // Récupérer le coefficient depuis la table classe_matiere
+        // RÃ©cupÃ©rer le coefficient depuis la table classe_matiere
         $profId = $isProfesseur ? $user->id : DB::table('classe_matiere')
                                                  ->where('classe_id', $request->classe_id)
                                                  ->where('matiere_id', $request->matiere_id)
@@ -132,21 +132,21 @@ class NoteController extends Controller
             ->where('professeur_id', $profId)
             ->value('coefficient');
 
-        // Si le coefficient n'est pas trouvé, utiliser une valeur par défaut
+        // Si le coefficient n'est pas trouvÃ©, utiliser une valeur par dÃ©faut
         $coefficient = $coefficient ?? 1.0;
 
         $numero = (int) $request->numero;
 
-        // Validation supplémentaire du numéro
+        // Validation supplÃ©mentaire du numÃ©ro
         if ($request->type_note === 'interro' && ($numero < 1 || $numero > 4)) {
-            return response()->json(['error' => 'Numéro d\'interrogation invalide.'], 400);
+            return response()->json(['error' => 'NumÃ©ro d\'interrogation invalide.'], 400);
         }
 
         if ($request->type_note === 'devoir' && ($numero < 1 || $numero > 2)) {
-            return response()->json(['error' => 'Numéro de devoir invalide.'], 400);
+            return response()->json(['error' => 'NumÃ©ro de devoir invalide.'], 400);
         }
 
-        // Déterminer la colonne une seule fois
+        // DÃ©terminer la colonne une seule fois
         $colonne = $request->type_note === 'interro'
             ? match ($numero) {
                 1 => 'premier_interro',
@@ -167,17 +167,17 @@ class NoteController extends Controller
 
             foreach ($request->notes as $eleveId => $valeurNote) {
                 if (! is_null($valeurNote)) {
-                    // Vérifier si une note existe déjà pour cet élève, cette matière, ce trimestre
+                    // VÃ©rifier si une note existe dÃ©jÃ  pour cet Ã©lÃ¨ve, cette matiÃ¨re, ce trimestre
                     $existingNote = Note::where('eleve_id', $eleveId)
                         ->where('classe_id', $request->classe_id)
                         ->where('matiere_id', $request->matiere_id)
                         ->where('trimestre', $request->trimestre)
                         ->first();
 
-                    // Si la note existe et que la colonne cible a déjà une valeur, on refuse la mise à jour
+                    // Si la note existe et que la colonne cible a dÃ©jÃ  une valeur, on refuse la mise Ã  jour
                     if (!$isCenseur && $existingNote && !is_null($existingNote->$colonne)) {
                         $notesIgnorees++;
-                        continue; // On ignore cette note pour ne pas écraser l'existant si on n'est pas censeur
+                        continue; // On ignore cette note pour ne pas Ã©craser l'existant si on n'est pas censeur
                     }
 
                     $note = Note::updateOrCreate(
@@ -211,28 +211,28 @@ class NoteController extends Controller
                     $declencherAlerte = false;
                     $raisonAlerte = '';
 
-                    // Vérification : 2 mauvaises notes consécutives
+                    // VÃ©rification : 2 mauvaises notes consÃ©cutives
                     if ($valeurNote < 10) {
                         if ($request->type_note === 'interro') {
                             if ($numero == 2 && $note->premier_interro !== null && $note->premier_interro < 10) {
                                 $declencherAlerte = true;
-                                $raisonAlerte = 'a obtenu consécutivement moins de la moyenne de classe aux interrogations';
+                                $raisonAlerte = 'a obtenu consÃ©cutivement moins de la moyenne de classe aux interrogations';
                             } elseif ($numero == 3 && $note->deuxieme_interro !== null && $note->deuxieme_interro < 10) {
                                 $declencherAlerte = true;
-                                $raisonAlerte = 'a obtenu consécutivement moins de la moyenne de classe aux interrogations';
+                                $raisonAlerte = 'a obtenu consÃ©cutivement moins de la moyenne de classe aux interrogations';
                             } elseif ($numero == 4 && $note->troisieme_interro !== null && $note->troisieme_interro < 10) {
                                 $declencherAlerte = true;
-                                $raisonAlerte = 'a obtenu consécutivement moins de la moyenne de classe aux interrogations';
+                                $raisonAlerte = 'a obtenu consÃ©cutivement moins de la moyenne de classe aux interrogations';
                             }
                         } elseif ($request->type_note === 'devoir') {
                             if ($numero == 2 && $note->premier_devoir !== null && $note->premier_devoir < 10) {
                                 $declencherAlerte = true;
-                                $raisonAlerte = 'a échoué consécutivement aux devoirs sur table';
+                                $raisonAlerte = 'a Ã©chouÃ© consÃ©cutivement aux devoirs sur table';
                             }
                         }
                     }
 
-                    // Déclenchement
+                    // DÃ©clenchement
                     $note->loadMissing(['eleve', 'matiere']);
                     $eleveAlerte = $note->eleve;
                     $matiereAlerte = $note->matiere;
@@ -261,22 +261,22 @@ class NoteController extends Controller
                         $typeEval = $request->type_note === 'interro' ? 'Interrogation' : 'Devoir';
                         $messageType = "$typeEval $numero";
                         
-                        $texteWhatsapp = "📝 *Nouvelle Note Ajoutée*\n\n";
-                        $texteWhatsapp .= "Élève : *{$eleveAlerte->nom_complet}*\n";
-                        $texteWhatsapp .= "Matière : *{$matiereAlerte->nom}*\n";
-                        $texteWhatsapp .= "Évaluation : *$messageType*\n";
+                        $texteWhatsapp = "ðŸ“ *Nouvelle Note AjoutÃ©e*\n\n";
+                        $texteWhatsapp .= "Ã‰lÃ¨ve : *{$eleveAlerte->nom_complet}*\n";
+                        $texteWhatsapp .= "MatiÃ¨re : *{$matiereAlerte->nom}*\n";
+                        $texteWhatsapp .= "Ã‰valuation : *$messageType*\n";
                         $texteWhatsapp .= "Note : *$valeurNote/20*\n\n";
 
                         if ($declencherAlerte) {
-                            $texteWhatsapp .= "⚠️ *ATTENTION* : L'élève $raisonAlerte. Merci de suivre cela de près de votre côté.\n\n";
+                            $texteWhatsapp .= "âš ï¸ *ATTENTION* : L'Ã©lÃ¨ve $raisonAlerte. Merci de suivre cela de prÃ¨s de votre cÃ´tÃ©.\n\n";
                         }
 
-                        $texteWhatsapp .= "Connectez-vous à l'espace parent pour plus de détails.";
+                        $texteWhatsapp .= "Connectez-vous Ã  l'espace parent pour plus de dÃ©tails.";
 
-                        // Envoi au répétiteur
+                        // Envoi au rÃ©pÃ©titeur
                         if (!empty($eleveAlerte->repetiteur_whatsapp)) {
                             try {
-                                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                                \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                                     'phone' => $eleveAlerte->repetiteur_whatsapp,
                                     'message' => $texteWhatsapp
                                 ]);
@@ -289,7 +289,7 @@ class NoteController extends Controller
                         foreach ($tuteurs as $tuteur) {
                             if (!empty($tuteur->telephone)) {
                                 try {
-                                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production.up.railway.app') . '/send', [
+                                    \Illuminate\Support\Facades\Http::timeout(10)->post(env('WHATSAPP_BOT_URL', 'https://whatsappndtg-production-b710.up.railway.app') . '/send', [
                                         'phone' => $tuteur->telephone,
                                         'message' => $texteWhatsapp
                                     ]);
@@ -304,9 +304,9 @@ class NoteController extends Controller
 
             DB::commit();
 
-            $message = 'Notes enregistrées avec succès!';
+            $message = 'Notes enregistrÃ©es avec succÃ¨s!';
             if ($notesIgnorees > 0) {
-                $message .= " ($notesIgnorees note(s) ignorée(s) car déjà existantes)";
+                $message .= " ($notesIgnorees note(s) ignorÃ©e(s) car dÃ©jÃ  existantes)";
             }
 
             return response()->json([
@@ -329,7 +329,7 @@ class NoteController extends Controller
     public function calculerMoyennes(Request $request)
     {
         if (! Auth::check()) {
-            return response()->json(['error' => 'Non authentifié'], 401);
+            return response()->json(['error' => 'Non authentifiÃ©'], 401);
         }
 
         $request->validate([
@@ -340,21 +340,21 @@ class NoteController extends Controller
 
         $professeur = Auth::user();
 
-        // Vérifier que le professeur a accès à cette classe et matière
+        // VÃ©rifier que le professeur a accÃ¨s Ã  cette classe et matiÃ¨re
         if (! $professeur->classes->contains($request->classe_id)) {
-            return response()->json(['error' => 'Vous n\'êtes pas assigné à cette classe.'], 403);
+            return response()->json(['error' => 'Vous n\'Ãªtes pas assignÃ© Ã  cette classe.'], 403);
         }
 
-        // Récupérer la classe et la matière
+        // RÃ©cupÃ©rer la classe et la matiÃ¨re
         $classe_selectionnee = Classe::find($request->classe_id);
         $matiere = Matiere::find($request->matiere_id);
 
-        // Vérifier que la classe et la matière existent
+        // VÃ©rifier que la classe et la matiÃ¨re existent
         if (! $classe_selectionnee || ! $matiere) {
-            return response()->json(['error' => 'Classe ou matière non trouvée.'], 404);
+            return response()->json(['error' => 'Classe ou matiÃ¨re non trouvÃ©e.'], 404);
         }
 
-        // Récupérer le coefficient depuis la table classe_matiere
+        // RÃ©cupÃ©rer le coefficient depuis la table classe_matiere
         $coefficient = DB::table('classe_matiere')
             ->where('classe_id', $request->classe_id)
             ->where('matiere_id', $request->matiere_id)
@@ -363,14 +363,14 @@ class NoteController extends Controller
 
         $coefficient = $coefficient ?? 1.0;
 
-        // Récupérer toutes les notes de la classe pour le trimestre
+        // RÃ©cupÃ©rer toutes les notes de la classe pour le trimestre
         $notes = Note::where('classe_id', $request->classe_id)
             ->where('matiere_id', $request->matiere_id)
             ->where('trimestre', $request->trimestre)
             ->with('eleve')
             ->get();
 
-        // Mettre à jour les coefficients si nécessaire
+        // Mettre Ã  jour les coefficients si nÃ©cessaire
         foreach ($notes as $note) {
             if ($note->coefficient != $coefficient) {
                 $note->coefficient = $coefficient;
@@ -378,14 +378,14 @@ class NoteController extends Controller
             }
         }
 
-        // Recharger les notes après mise à jour
+        // Recharger les notes aprÃ¨s mise Ã  jour
         $notes = Note::where('classe_id', $request->classe_id)
             ->where('matiere_id', $request->matiere_id)
             ->where('trimestre', $request->trimestre)
             ->with('eleve')
             ->get();
 
-        // Calculer les moyennes et classer les élèves
+        // Calculer les moyennes et classer les Ã©lÃ¨ves
         $moyennes = $notes->map(function ($note) use ($coefficient) {
             return [
                 'eleve_id' => $note->eleve_id,
@@ -398,7 +398,7 @@ class NoteController extends Controller
                 'moyenne_interro' => $note->moyenne_interro,
                 'premier_devoir' => $note->premier_devoir,
                 'deuxieme_devoir' => $note->deuxieme_devoir,
-                'moyenne_trimestre' => $note->moyenne_trimestrielle,
+                'moyenne_trimestrielle' => $note->moyenne_trimestrielle,
                 'coefficient' => $coefficient,
                 'moyenne_coefficientee' => $note->moyenne_trimestrielle ? $note->moyenne_trimestrielle * $coefficient : null,
                 'commentaire' => $note->commentaire,
@@ -412,7 +412,7 @@ class NoteController extends Controller
             return $item;
         });
 
-        // Récupérer également les autres variables nécessaires pour la vue
+        // RÃ©cupÃ©rer Ã©galement les autres variables nÃ©cessaires pour la vue
         $professeur->load(['classes' => function ($query) use ($professeur) {
             $query->with(['matieres' => function ($q) use ($professeur) {
                 $q->wherePivot('professeur_id', $professeur->id)
@@ -442,7 +442,7 @@ class NoteController extends Controller
     public function getMoyennesAjax(Request $request)
     {
         if (! Auth::check()) {
-            return response()->json(['error' => 'Non authentifié'], 401);
+            return response()->json(['error' => 'Non authentifiÃ©'], 401);
         }
 
         $request->validate([
@@ -452,22 +452,22 @@ class NoteController extends Controller
 
         $professeur = Auth::user();
 
-        // Vérifier que le professeur a accès à cette classe
+        // VÃ©rifier que le professeur a accÃ¨s Ã  cette classe
         if (! $professeur->classes->contains($request->classe_id)) {
-            return response()->json(['error' => 'Accès non autorisé à cette classe'], 403);
+            return response()->json(['error' => 'AccÃ¨s non autorisÃ© Ã  cette classe'], 403);
         }
 
-        // Récupérer la matière enseignée par ce professeur dans cette classe
+        // RÃ©cupÃ©rer la matiÃ¨re enseignÃ©e par ce professeur dans cette classe
         $matiere = DB::table('classe_matiere')
             ->where('classe_id', $request->classe_id)
             ->where('professeur_id', $professeur->id)
             ->first();
 
         if (! $matiere) {
-            return response()->json(['error' => 'Aucune matière trouvée pour cette classe'], 404);
+            return response()->json(['error' => 'Aucune matiÃ¨re trouvÃ©e pour cette classe'], 404);
         }
 
-        // Récupérer les notes avec les informations des élèves
+        // RÃ©cupÃ©rer les notes avec les informations des Ã©lÃ¨ves
         $notes = Note::with('eleve')
             ->where('classe_id', $request->classe_id)
             ->where('trimestre', $request->trimestre)
@@ -479,9 +479,9 @@ class NoteController extends Controller
             return response()->json(['moyennes' => []]);
         }
 
-        // Calculer le rang pour chaque élève
+        // Calculer le rang pour chaque Ã©lÃ¨ve
         $notesAvecRang = $notes->map(function ($note) use ($notes) {
-            // Calculer le rang en fonction de la moyenne coefficientée
+            // Calculer le rang en fonction de la moyenne coefficientÃ©e
             $rang = $notes->where('moyenne_coefficientee', '>', $note->moyenne_coefficientee)
                 ->count() + 1;
 
@@ -511,7 +511,7 @@ class NoteController extends Controller
     public function getMoyennesForDashboard($classeId, $trimestre, $professeurId)
     {
         try {
-            // Récupérer la matière enseignée par ce professeur dans cette classe
+            // RÃ©cupÃ©rer la matiÃ¨re enseignÃ©e par ce professeur dans cette classe
             $matiere = DB::table('classe_matiere')
                 ->where('classe_id', $classeId)
                 ->where('professeur_id', $professeurId)
@@ -521,7 +521,7 @@ class NoteController extends Controller
                 return [];
             }
 
-            // Récupérer les notes avec les informations des élèves
+            // RÃ©cupÃ©rer les notes avec les informations des Ã©lÃ¨ves
             $notes = Note::with('eleve')
                 ->where('classe_id', $classeId)
                 ->where('trimestre', $trimestre)
@@ -533,13 +533,13 @@ class NoteController extends Controller
                 return [];
             }
 
-            // Calculer le rang pour chaque élève
+            // Calculer le rang pour chaque Ã©lÃ¨ve
             $notesAvecRang = $notes->map(function ($note) use ($notes, $classeId) {
-                // Calculer le rang en fonction de la moyenne coefficientée
+                // Calculer le rang en fonction de la moyenne coefficientÃ©e
                 $rang = $notes->where('moyenne_coefficientee', '>', $note->moyenne_coefficientee)
                     ->count() + 1;
 
-                // Récupérer le nom de la classe
+                // RÃ©cupÃ©rer le nom de la classe
                 $classe = Classe::find($classeId);
 
                 return [
@@ -564,7 +564,7 @@ class NoteController extends Controller
             return $notesAvecRang;
 
         } catch (\Exception $e) {
-            Log::error('Erreur récupération moyennes dashboard: '.$e->getMessage());
+            Log::error('Erreur rÃ©cupÃ©ration moyennes dashboard: '.$e->getMessage());
 
             return [];
         }
@@ -573,17 +573,17 @@ class NoteController extends Controller
     public function dashboard(Request $request)
     {
         if (! Auth::check()) {
-            return response()->json(['error' => 'Non authentifié'], 401);
+            return response()->json(['error' => 'Non authentifiÃ©'], 401);
         }
 
         $professeur = Auth::user();
 
-        // Charger les classes avec le nombre d'élèves
+        // Charger les classes avec le nombre d'Ã©lÃ¨ves
         $professeur->load(['classes' => function ($query) {
             $query->withCount('eleves');
         }]);
 
-        // Récupérer toutes les matières disponibles
+        // RÃ©cupÃ©rer toutes les matiÃ¨res disponibles
         $matieres = Matiere::orderBy('nom')->get();
 
         $stats = [
@@ -592,7 +592,7 @@ class NoteController extends Controller
             'cours_semaine' => 8,
         ];
 
-        // Récupérer les moyennes si des filtres sont appliqués
+        // RÃ©cupÃ©rer les moyennes si des filtres sont appliquÃ©s
         $moyennesData = [];
         if ($request->has('classe_id') && $request->has('trimestre')) {
             $moyennesData = $this->getMoyennesForDashboard(
@@ -611,3 +611,4 @@ class NoteController extends Controller
         ]);
     }
 }
+

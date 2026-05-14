@@ -13,7 +13,7 @@ class AiService
     public function __construct()
     {
         $this->apiKey  = env('GEMINI_API_KEY');
-        $this->baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+        $this->baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -43,9 +43,9 @@ class AiService
         }
 
         $prompt = <<<PROMPT
-Tu es un conseiller pédagogique expert dans un établissement scolaire (Notre Dame Pro).
-Analyse les données de cet élève et rédige un bilan COURT (3 à 4 phrases, pas de tirets ni listes) destiné au professeur.
-Identifie : (1) les points forts et faiblesses principales, (2) la tendance (progression ou régression), (3) une recommandation concrète (répétiteur, travail ciblé, encouragements).
+Tu es un conseiller pédagogique (Notre Dame Pro). Analyse les données de cet élève.
+Rédige exactement 3 phrases complètes (sans tirets), destinées au professeur :
+1. Forces et faiblesses. 2. Tendance (hausse/baisse). 3. Une recommandation concrète.
 
 Données :
 $matieresString
@@ -89,22 +89,12 @@ PROMPT;
         }
 
         $prompt = <<<PROMPT
-Tu es un conseiller pédagogique expert (Notre Dame Pro, {$classe}).
-Analyse les données de l'élève **{$nom}** en **{$matiere}** et rédige un bilan destiné au **professeur**.
-Format attendu : 3 à 4 phrases SANS tirets ni listes. Commence directement par l'analyse.
-Inclus : tendance générale (hausse/baisse), points critiques (interros vs devoirs), classement, et 1 recommandation pédagogique précise.
+Conseiller pédagogique (Notre Dame Pro, {$classe}). Bilan de {$nom} en {$matiere} pour le professeur.
+Rédige 3 phrases complètes, sans tirets. Couvre : tendance (interros vs devoirs), rang ({$rang}/{$effectif}), écart classe ({$signe}{$ecartMoy}pts), et 1 recommandation précise.
 
-📊 DONNÉES CLÉS :
-- Moyenne générale : {$moy}/20
-- Rang dans la classe : {$rang}/{$effectif}
-- Taux de réussite (≥10/20) : {$tauxReuss}%
-- Écart vs moyenne classe : {$signe}{$ecartMoy} pts
-- Absences signalées : {$absences}
-
-📈 PROGRESSION PAR TRIMESTRE :
-{$progressionTxt}
-📝 DÉTAIL DES NOTES :
-{$notesTxt}
+Données clés :
+- Moyenne : {$moy}/20 | Taux réussite : {$tauxReuss}% | Absences : {$absences}
+Progression : {$progressionTxt}Notes : {$notesTxt}
 PROMPT;
 
         return $this->callGemini($prompt);
@@ -159,15 +149,11 @@ PROMPT;
         }
 
         $prompt = <<<PROMPT
-Tu es un conseiller pédagogique expert (Notre Dame Pro, classe **{$classe}**).
-Analyse les performances globales en **{$matiere}** et rédige un rapport COURT (4 à 5 phrases, sans tirets) destiné au **professeur**.
-Inclus : (1) évolution trimestre par trimestre, (2) points d'inquiétude (taux d'échec, écart-type élevé), (3) 2 recommandations pédagogiques concrètes adaptées au niveau observé.
+Conseiller pédagogique (Notre Dame Pro). Classe {$classe} ({$effectif} élèves) en {$matiere}.
+Rédige 4 phrases complètes, sans tirets, pour le professeur.
+Couvre : évolution trimestrielle, taux d'échec, points critiques, 2 recommandations concrètes.
 
-👥 CLASSE : {$effectif} élèves
-📈 RÉSULTATS PAR TRIMESTRE :
-{$progressionTxt}
-📊 DISTRIBUTION DES MOYENNES (annuelles) :
-{$distTxt}
+Résultats : {$progressionTxt}Distribution : {$distTxt}
 PROMPT;
 
         return $this->callGemini($prompt);
@@ -238,8 +224,8 @@ PROMPT;
                 ->post("{$this->baseUrl}?key={$this->apiKey}", [
                     'contents' => [['parts' => [['text' => $prompt]]]],
                     'generationConfig' => [
-                        'temperature'     => 0.4,
-                        'maxOutputTokens' => 400,
+                        'temperature'     => 0.35,
+                        'maxOutputTokens' => 700,
                     ],
                 ]);
 
